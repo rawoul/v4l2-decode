@@ -163,6 +163,7 @@ struct instance {
 	int width;
 	int height;
 	int save_frames;
+	char *save_path;
 
 	/* Input file related parameters */
 	struct input	in;

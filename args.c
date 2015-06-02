@@ -76,7 +76,7 @@ int parse_args(struct instance *i, int argc, char **argv)
 
 	init_to_defaults(i);
 
-	while ((c = getopt(argc, argv, "w:h:c:d:i:m:f")) != -1) {
+	while ((c = getopt(argc, argv, "w:h:c:d:i:m:f:")) != -1) {
 		switch (c) {
 		case 'c':
 			i->parser.codec = get_codec(optarg);
@@ -98,6 +98,7 @@ int parse_args(struct instance *i, int argc, char **argv)
 			break;
 		case 'f':
 			i->save_frames = 1;
+			i->save_path = optarg;
 			break;
 		default:
 			err("Bad argument");

@@ -165,7 +165,7 @@ int extract_and_process_header(struct instance *i)
 	return 0;
 }
 
-int save_frame(const void *buf, unsigned int size)
+int save_frame(struct instance *i, const void *buf, unsigned int size)
 {
 	mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
 	char filename[64];
@@ -173,7 +173,14 @@ int save_frame(const void *buf, unsigned int size)
 	int ret;
 	static unsigned int frame_num = 0;
 
-	ret = sprintf(filename, "/mnt/frame%04d.nv12", frame_num);
+	if (!i->save_frames)
+		return 0;
+
+	if (!i->save_path)
+		ret = sprintf(filename, "/mnt/frame%04d.nv12", frame_num);
+	else
+		ret = sprintf(filename, "%s/frame%04d.nv12", i->save_path,
+			      frame_num);
 	if (ret < 0) {
 		err("sprintf fail (%s)", strerror(errno));
 		return -1;
@@ -297,9 +304,8 @@ void *main_thread_func(void *args)
 
 			vid->total_captured++;
 
-			if (i->save_frames)
-				save_frame((void *)vid->cap_buf_addr[n][0],
-					   bytesused);
+			save_frame(i, (void *)vid->cap_buf_addr[n][0],
+				   bytesused);
 
 			ret = video_queue_buf_cap(i, n);
 			if (!ret)
