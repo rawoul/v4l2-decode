@@ -24,7 +24,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <linux/videodev2.h>
-#include <media/msm-v4l2-controls.h>
+#include "msm-v4l2-controls.h"
 #include <sys/ioctl.h>
 #include <poll.h>
 #include <pthread.h>

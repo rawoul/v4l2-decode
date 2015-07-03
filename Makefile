@@ -17,9 +17,9 @@
 #
 
 # Toolchain path
-TCPATH = arm-linux-gnueabihf-
-#TCPATH =
-KERNELHEADERS = /home/svarbanov/work/linux/mainline/kobj-linaro-integration/usr/include
+#TCPATH = arm-linux-gnueabihf-
+TCPATH = aarch64-linux-gnu-
+KERNELHEADERS = /usr/include
 
 CC = ${TCPATH}gcc
 AR = "${TCPATH}ar rc"

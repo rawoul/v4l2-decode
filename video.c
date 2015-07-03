@@ -21,7 +21,7 @@
  */
 
 #include <linux/videodev2.h>
-#include <media/msm-v4l2-controls.h>
+#include "msm-v4l2-controls.h"
 #include <fcntl.h>
 #include <string.h>
 #include <sys/mman.h>
