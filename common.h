@@ -45,7 +45,7 @@
 		__func__, __LINE__, ##__VA_ARGS__)
 #else
 #define err(msg, ...) \
-	fprintf(stderr, "Error: " msg "\n", __FILE__, ##__VA_ARGS__)
+	fprintf(stderr, "Error: " msg "\n", ##__VA_ARGS__)
 #endif /* ADD_DETAILS */
 
 #define info(msg, ...) \
