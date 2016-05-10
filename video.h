@@ -56,7 +56,7 @@ int video_stream(struct instance *i, enum v4l2_buf_type type, int status);
  * dequeued buffer. */
 int video_dequeue_output(struct instance *i, int *n);
 int video_dequeue_capture(struct instance *i, int *n, int *finished,
-			  unsigned int *bytesused);
+			  unsigned int *bytesused, struct timeval *ts);
 
 int video_set_control(struct instance *i);
 

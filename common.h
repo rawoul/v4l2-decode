@@ -76,7 +76,7 @@
 #define OUT_PLANES		1
 
 /* Number of capture planes */
-#define CAP_PLANES		1
+#define CAP_PLANES		2
 
 /* Maximum number of planes used in the application */
 #define MAX_PLANES		CAP_PLANES
@@ -126,6 +126,8 @@ struct video {
 	int out_buf_off[MAX_OUT_BUF];
 	char *out_buf_addr[MAX_OUT_BUF];
 	int out_buf_flag[MAX_OUT_BUF];
+	int out_ion_fd;
+	void *out_ion_addr;
 
 	/* Capture queue related */
 	int cap_w;
@@ -137,10 +139,13 @@ struct video {
 	int cap_buf_cnt;
 	int cap_buf_cnt_min;
 	int cap_buf_size[CAP_PLANES];
+	int cap_buf_stride[CAP_PLANES];
 	int cap_buf_off[MAX_CAP_BUF][CAP_PLANES];
 	char *cap_buf_addr[MAX_CAP_BUF][CAP_PLANES];
 	int cap_buf_flag[MAX_CAP_BUF];
 	int cap_buf_queued;
+	int cap_ion_fd;
+	void *cap_ion_addr;
 
 	unsigned long total_captured;
 };

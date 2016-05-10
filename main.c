@@ -24,7 +24,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <linux/videodev2.h>
-#include "msm-v4l2-controls.h"
 #include <sys/ioctl.h>
 #include <poll.h>
 #include <pthread.h>
@@ -50,6 +49,8 @@
  * This is the number of buffers that the application can keep
  * used and still enable video device to decode with the hardware. */
 #define RESULT_EXTRA_BUFFER_CNT 2
+
+#define V4L2_EVENT_MSM_VIDC_CLOSE_DONE      (V4L2_EVENT_MSM_VIDC_START + 4)
 
 static const int event_type[] = {
 	V4L2_EVENT_MSM_VIDC_FLUSH_DONE,
@@ -286,18 +287,20 @@ void *main_thread_func(void *args)
 		revents = pfd.revents;
 
 		if (revents & (POLLIN | POLLRDNORM)) {
+			struct timeval tv;
 			unsigned int bytesused;
 
 			/* capture buffer is ready */
 
 			ret = video_dequeue_capture(i, &n, &finished,
-						    &bytesused);
+						    &bytesused, &tv);
 			if (ret < 0)
 				goto next_event;
 
 			vid->cap_buf_flag[n] = 0;
 
-			info("decoded frame %ld", vid->total_captured);
+			info("decoded frame %ld with ts %lu.%03lu",
+			     vid->total_captured, tv.tv_sec, tv.tv_usec / 1000);
 
 			if (finished)
 				break;
