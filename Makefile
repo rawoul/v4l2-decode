@@ -23,32 +23,28 @@ KERNELHEADERS = /usr/include
 
 CC = ${TCPATH}gcc
 AR = "${TCPATH}ar rc"
-AR2 = ${TCPATH}ranlib make -j4
-
 
 INCLUDES = -I$(KERNELHEADERS)
-
-#INCLUDES = -I$(KERNELHEADERS)/include
-
-#-I$(TARGETROOT)/usr/include/linux
-
 SOURCES = main.c fileops.c args.c parser.c video.c queue.c
 OBJECTS := $(SOURCES:.c=.o)
 EXEC = v4l2_decode
-CFLAGS = -Wall -g -lm
-#-Os
+CFLAGS = -Wall -g -pthread
+LDFLAGS = -pthread
+LDLIBS = -lm
 
 all: $(EXEC)
 
 .c.o:
-	$(CC) -c $(CFLAGS) $(INCLUDES) $<
+	$(CC) -c $(CFLAGS) -MD -MP -MF $(@D)/.$(@F).d $(INCLUDES) $<
 
 $(EXEC): $(OBJECTS)
-	$(CC) $(CFLAGS) -static -o $(EXEC) $(OBJECTS) -pthread
+	$(CC) -static $(LDFLAGS) -o $(EXEC) $(OBJECTS) $(LDLIBS)
 
 clean:
 	rm -f *.o $(EXEC)
 
 install:
 
-.PHONY: clean all
+.PHONY: clean all install
+
+-include $(patsubst %,.%.d,$(OBJECTS))
