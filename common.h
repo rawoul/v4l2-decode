@@ -33,11 +33,11 @@
 /* When ADD_DETAILS is defined every debug and error message contains
  * information about the file, function and line of code where it has
  * been called */
-#define ADD_DETAILS
+//#define ADD_DETAILS
 
 /* When DEBUG is defined debug messages are printed on the screen.
  * Otherwise only error messages are displayed. */
-//#define DEBUG
+#define DEBUG
 
 #ifdef ADD_DETAILS
 #define err(msg, ...) \
