@@ -20,10 +20,6 @@
  *
  */
 
-#include <linux/videodev2.h>
-#include <linux/ion.h>
-#include <linux/msm_ion.h>
-
 #include <assert.h>
 #include <fcntl.h>
 #include <string.h>
@@ -33,6 +29,10 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <errno.h>
+
+#include <linux/videodev2.h>
+#include <linux/ion.h>
+#include <linux/msm_ion.h>
 
 #include "common.h"
 
