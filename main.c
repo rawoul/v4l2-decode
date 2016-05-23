@@ -32,10 +32,13 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include <drm/drm_fourcc.h>
+
 #include "args.h"
 #include "common.h"
 #include "fileops.h"
 #include "video.h"
+#include "display.h"
 #include "parser.h"
 
 /* This is the size of the buffer for the compressed stream.
@@ -274,7 +277,7 @@ void *main_thread_func(void *args)
 	pfd.events = POLLIN | POLLRDNORM | POLLOUT | POLLWRNORM |
 		     POLLRDBAND | POLLPRI;
 
-	while (1) {
+	while (display_is_running(i->display)) {
 		ret = poll(&pfd, 1, 10000);
 		if (!ret) {
 			err("poll timeout");
@@ -310,6 +313,8 @@ void *main_thread_func(void *args)
 			save_frame(i, (void *)vid->cap_buf_addr[n][0],
 				   bytesused);
 
+			window_show_buffer(i->window, i->disp_buffers[n]);
+
 			ret = video_queue_buf_cap(i, n);
 			if (!ret)
 				vid->cap_buf_flag[n] = 1;
@@ -339,6 +344,35 @@ next_event:
 	dbg("main thread finished");
 
 	return NULL;
+}
+
+static int
+display_setup(struct instance *i)
+{
+	struct video *vid = &i->video;
+	int n;
+
+	i->display = display_create();
+	if (!i->display)
+		return -1;
+
+	i->window = display_create_window(i->display);
+	if (!i->window)
+		return -1;
+
+	for (n = 0; n < vid->cap_buf_cnt; n++) {
+		i->disp_buffers[n] =
+			window_create_buffer(i->window, vid->cap_ion_fd,
+					     vid->cap_buf_off[n][0],
+					     DRM_FORMAT_NV12,
+					     i->width, i->height,
+					     vid->cap_buf_stride[0]);
+
+		if (!i->disp_buffers[n])
+			return -1;
+	}
+
+	return 0;
 }
 
 int main(int argc, char **argv)
@@ -384,6 +418,10 @@ int main(int argc, char **argv)
 		goto err;
 
 	ret = video_setup_capture(&inst, 20, inst.width, inst.height);
+	if (ret)
+		goto err;
+
+	ret = display_setup(&inst);
 	if (ret)
 		goto err;
 

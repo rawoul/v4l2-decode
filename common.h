@@ -28,6 +28,7 @@
 #include <semaphore.h>
 
 #include "parser.h"
+#include "display.h"
 #include "queue.h"
 
 /* When ADD_DETAILS is defined every debug and error message contains
@@ -158,12 +159,17 @@ struct instance {
 	struct parser	parser;
 
 	pthread_mutex_t lock;
+	pthread_cond_t cond;
 	struct queue queue;
 
 	/* Control */
 	int error;   /* The error flag */
 	int finish;  /* Flag set when decoding has been completed and all
 			threads finish */
+
+	struct display *display;
+	struct window *window;
+	struct fb *disp_buffers[MAX_CAP_BUF];
 };
 
 #endif /* INCLUDE_COMMON_H */

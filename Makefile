@@ -17,34 +17,71 @@
 #
 
 # Toolchain path
-#TCPATH = arm-linux-gnueabihf-
-TCPATH = aarch64-linux-gnu-
-KERNELHEADERS = /usr/include
+CROSS ?= aarch64-linux-gnu-
 
-CC = ${TCPATH}gcc
-AR = "${TCPATH}ar rc"
+CC = $(CROSS)gcc
+AR = $(CROSS)ar rc
+PKG_CONFIG ?= pkg-config
 
-INCLUDES = -I$(KERNELHEADERS)
-SOURCES = main.c fileops.c args.c parser.c video.c queue.c
+WAYLAND_SCANNER := $(shell $(PKG_CONFIG) --variable=wayland_scanner wayland-scanner)
+WAYLAND_PROTOCOLS_DATADIR := $(shell $(PKG_CONFIG) --variable=pkgdatadir wayland-protocols)
+
+GENERATED_SOURCES = \
+  protocol/xdg-shell-unstable-v5-protocol.c \
+  protocol/xdg-shell-unstable-v5-client-protocol.h \
+  protocol/linux-dmabuf-unstable-v1-protocol.c \
+  protocol/linux-dmabuf-unstable-v1-client-protocol.h
+
+SOURCES = main.c fileops.c args.c parser.c video.c queue.c display.c $(filter %.c,$(GENERATED_SOURCES))
 OBJECTS := $(SOURCES:.c=.o)
 EXEC = v4l2_decode
-CFLAGS = -Wall -g -pthread
-LDFLAGS = -pthread
-LDLIBS = -lm
+
+cflags = -Wall -pthread $(CFLAGS)
+ldflags = -pthread $(LDFLAGS)
+cppflags = -Iprotocol $(CPPFLAGS)
+ldlibs = -lm -lwayland-client
 
 all: $(EXEC)
 
-.c.o:
-	$(CC) -c $(CFLAGS) -MD -MP -MF $(@D)/.$(@F).d $(INCLUDES) $<
+%.o: %.c
+	$(CC) -c $(cflags) -o $@ -MD -MP -MF $(@D)/.$(@F).d $(cppflags) $<
 
-$(EXEC): $(OBJECTS)
-	$(CC) -static $(LDFLAGS) -o $(EXEC) $(OBJECTS) $(LDLIBS)
+$(EXEC): $(GENERATED_SOURCES) $(OBJECTS)
+	$(CC) $(ldflags) -o $(EXEC) $(OBJECTS) $(ldlibs)
 
 clean:
-	rm -f *.o $(EXEC)
+	$(RM) *.o $(EXEC) $(GENERATED_SOURCES)
 
 install:
 
 .PHONY: clean all install
 
 -include $(patsubst %,.%.d,$(OBJECTS))
+
+.SECONDEXPANSION:
+
+define protostability
+$(if $(findstring unstable,$1),unstable,stable)
+endef
+
+define protoname
+$(shell echo $1 | sed 's/\([a-z\-]\+\)-[a-z]\+-v[0-9]\+/\1/')
+endef
+
+protocol/%-protocol.c : $(WAYLAND_PROTOCOLS_DATADIR)/$$(call protostability,$$*)/$$(call protoname,$$*)/$$*.xml
+	mkdir -p $(@D) && $(WAYLAND_SCANNER) code < $< > $@
+
+protocol/%-server-protocol.h : $(WAYLAND_PROTOCOLS_DATADIR)/$$(call protostability,$$*)/$$(call protoname,$$*)/$$*.xml
+	mkdir -p $(@D) && $(WAYLAND_SCANNER) server-header < $< > $@
+
+protocol/%-client-protocol.h : $(WAYLAND_PROTOCOLS_DATADIR)/$$(call protostability,$$*)/$$(call protoname,$$*)/$$*.xml
+	mkdir -p $(@D) && $(WAYLAND_SCANNER) client-header < $< > $@
+
+protocol/%-protocol.c : $(top_srcdir)/protocol/%.xml
+	mkdir -p $(@D) && $(WAYLAND_SCANNER) code < $< > $@
+
+protocol/%-server-protocol.h : $(top_srcdir)/protocol/%.xml
+	mkdir -p $(@D) && $(WAYLAND_SCANNER) server-header < $< > $@
+
+protocol/%-client-protocol.h : $(top_srcdir)/protocol/%.xml
+	mkdir -p $(@D) && $(WAYLAND_SCANNER) client-header < $< > $@
