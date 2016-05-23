@@ -223,42 +223,48 @@ void *parser_thread_func(void *args)
 	dbg("Parser thread started");
 
 	while (!i->error && !i->finish && !i->parser.finished) {
-		n = 0;
 		pthread_mutex_lock(&i->lock);
-		while (n < vid->out_buf_cnt && vid->out_buf_flag[n])
-			n++;
+
+		for (n = 0; n < vid->out_buf_cnt && vid->out_buf_flag[n]; n++)
+			;
+
+		if (n == vid->out_buf_cnt) {
+			pthread_cond_wait(&i->cond, &i->lock);
+			pthread_mutex_unlock(&i->lock);
+			continue;
+		}
+
 		pthread_mutex_unlock(&i->lock);
 
-		if (n < vid->out_buf_cnt && !i->parser.finished) {
+		ret = i->parser.func(&i->parser.ctx,
+				     i->in.p + i->in.offs,
+				     i->in.size - i->in.offs,
+				     vid->out_buf_addr[n],
+				     vid->out_buf_size,
+				     &used, &fs, 0);
 
-			ret = i->parser.func(&i->parser.ctx,
-					     i->in.p + i->in.offs,
-					     i->in.size - i->in.offs,
-					     vid->out_buf_addr[n],
-					     vid->out_buf_size,
-					     &used, &fs, 0);
-
-			if (ret == 0 && i->in.offs == i->in.size) {
-				info("Parser has extracted all frames");
-				i->parser.finished = 1;
-				fs = 0;
-			}
-
-			dbg("Extracted frame of size %d", fs);
-
-			ret = video_queue_buf_out(i, n, fs);
-
-			pthread_mutex_lock(&i->lock);
-			vid->out_buf_flag[n] = 1;
-			pthread_mutex_unlock(&i->lock);
-
-			dbg("queued output buffer %d", n);
-
-			i->in.offs += used;
+		if (ret == 0 && i->in.offs == i->in.size) {
+			info("Parser has extracted all frames");
+			i->parser.finished = 1;
+			fs = 0;
 		}
+
+		dbg("Extracted frame of size %d", fs);
+
+		ret = video_queue_buf_out(i, n, fs);
+
+		pthread_mutex_lock(&i->lock);
+		vid->out_buf_flag[n] = 1;
+		pthread_mutex_unlock(&i->lock);
+
+		dbg("queued output buffer %d", n);
+
+		i->in.offs += used;
 	}
 
 	dbg("Parser thread finished");
+
+	pthread_cond_signal(&i->cond);
 
 	return NULL;
 }
@@ -329,6 +335,7 @@ next_event:
 			} else {
 				pthread_mutex_lock(&i->lock);
 				vid->out_buf_flag[n] = 0;
+				pthread_cond_signal(&i->cond);
 				pthread_mutex_unlock(&i->lock);
 			}
 
@@ -392,6 +399,7 @@ int main(int argc, char **argv)
 	info("decoding resolution is %dx%d", inst.width, inst.height);
 
 	pthread_mutex_init(&inst.lock, 0);
+	pthread_cond_init(&inst.cond, 0);
 
 	vid->total_captured = 0;
 
@@ -463,6 +471,7 @@ int main(int argc, char **argv)
 
 	cleanup(&inst);
 
+	pthread_cond_destroy(&inst.cond);
 	pthread_mutex_destroy(&inst.lock);
 
 	info("Total frames captured %ld", vid->total_captured);
