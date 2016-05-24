@@ -32,8 +32,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#include <drm/drm_fourcc.h>
-
 #include "args.h"
 #include "common.h"
 #include "fileops.h"
@@ -371,8 +369,8 @@ display_setup(struct instance *i)
 		i->disp_buffers[n] =
 			window_create_buffer(i->window, vid->cap_ion_fd,
 					     vid->cap_buf_off[n][0],
-					     DRM_FORMAT_NV12,
-					     i->width, i->height,
+					     vid->cap_buf_format,
+					     vid->cap_w, vid->cap_h,
 					     vid->cap_buf_stride[0]);
 
 		if (!i->disp_buffers[n])

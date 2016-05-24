@@ -33,6 +33,7 @@
 #include <linux/videodev2.h>
 #include <linux/ion.h>
 #include <linux/msm_ion.h>
+#include <media/msm_media_info.h>
 
 #include "common.h"
 
@@ -412,11 +413,31 @@ free:
 	return -1;
 }
 
+static int get_msm_color_format(uint32_t fourcc)
+{
+	switch (fourcc) {
+	case V4L2_PIX_FMT_NV12:
+		return COLOR_FMT_NV12;
+	case V4L2_PIX_FMT_NV21:
+		return COLOR_FMT_NV21;
+	case V4L2_PIX_FMT_NV12_UBWC:
+		return COLOR_FMT_NV12_UBWC;
+	case V4L2_PIX_FMT_NV12_TP10_UBWC:
+		return COLOR_FMT_NV12_BPP10_UBWC;
+	case V4L2_PIX_FMT_RGBA8888_UBWC:
+		return COLOR_FMT_RGBA8888_UBWC;
+	}
+
+	return -1;
+}
+
 int video_setup_capture(struct instance *i, int extra_buf, int w, int h)
 {
 	struct video *vid = &i->video;
 	struct v4l2_format fmt;
 	struct v4l2_requestbuffers reqbuf;
+	int buffer_size;
+	int color_fmt;
 	int ion_fd;
 	void *buf_addr;
 	int n;
@@ -424,7 +445,11 @@ int video_setup_capture(struct instance *i, int extra_buf, int w, int h)
 	fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 	fmt.fmt.pix_mp.height = h;
 	fmt.fmt.pix_mp.width = w;
+#if 0
+	fmt.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_NV12_UBWC;
+#else
 	fmt.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_NV12;
+#endif
 
 	if (ioctl(vid->fd, VIDIOC_S_FMT, &fmt) < 0) {
 		err("Failed to set format (%dx%d)", w, h);
@@ -465,10 +490,29 @@ int video_setup_capture(struct instance *i, int extra_buf, int w, int h)
 		    fmt.fmt.pix_mp.plane_fmt[n].bytesperline,
 		    fmt.fmt.pix_mp.plane_fmt[n].reserved[0]);
 
+	color_fmt = get_msm_color_format(fmt.fmt.pix_mp.pixelformat);
+	if (color_fmt < 0) {
+		err("unhandled output pixel format");
+		return -1;
+	}
+
+	vid->cap_buf_format = fmt.fmt.pix_mp.pixelformat;
 	vid->cap_w = fmt.fmt.pix_mp.width;
 	vid->cap_h = fmt.fmt.pix_mp.height;
-	vid->cap_buf_size[0] = fmt.fmt.pix_mp.plane_fmt[0].sizeimage;
 	vid->cap_buf_stride[0] = fmt.fmt.pix_mp.plane_fmt[0].bytesperline;
+	vid->cap_buf_size[0] = fmt.fmt.pix_mp.plane_fmt[0].sizeimage;
+
+#if 0
+	vid->cap_h = VENUS_Y_SCANLINES(color_fmt, fmt.fmt.pix_mp.height);
+	vid->cap_buf_stride[0] = VENUS_Y_STRIDE(color_fmt, fmt.fmt.pix_mp.width);
+#endif
+
+	buffer_size = VENUS_BUFFER_SIZE(color_fmt,
+					fmt.fmt.pix_mp.width,
+					fmt.fmt.pix_mp.height);
+
+	if (vid->cap_buf_size[0] < buffer_size)
+		vid->cap_buf_size[0] = buffer_size;
 
 	ion_fd = alloc_ion_buffer(i, vid->cap_buf_cnt * vid->cap_buf_size[0]);
 	if (ion_fd < 0)
