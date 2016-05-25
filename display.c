@@ -20,17 +20,6 @@ struct display {
 	int running;
 };
 
-struct fb {
-	struct window *window;
-	int fd;
-	int offset;
-	int width;
-	int height;
-	int stride;
-	uint32_t format;
-	struct wl_buffer *buffer;
-};
-
 struct window {
 	struct display *display;
 	struct wl_surface *surface;
@@ -103,6 +92,19 @@ window_destroy(struct window *window)
 }
 
 static void
+buffer_release(void *data, struct wl_buffer *buffer)
+{
+	struct fb *fb = data;
+
+	if (fb->release_cb)
+		fb->release_cb(fb, fb->cb_data);
+}
+
+static const struct wl_buffer_listener buffer_listener = {
+	buffer_release
+};
+
+static void
 create_succeeded(void *data,
 		 struct zwp_linux_buffer_params_v1 *params,
 		 struct wl_buffer *new_buffer)
@@ -110,6 +112,7 @@ create_succeeded(void *data,
 	struct fb *fb = data;
 
 	fb->buffer = new_buffer;
+	wl_buffer_add_listener(fb->buffer, &buffer_listener, fb);
 
 	zwp_linux_buffer_params_v1_destroy(params);
 }
@@ -147,7 +150,7 @@ format_is_supported(struct display *display, uint32_t format)
 }
 
 struct fb *
-window_create_buffer(struct window *window, int fd, int offset,
+window_create_buffer(struct window *window, int index, int fd, int offset,
 		     uint32_t format, int width, int height, int stride)
 {
 	struct zwp_linux_buffer_params_v1 *params;
@@ -161,6 +164,7 @@ window_create_buffer(struct window *window, int fd, int offset,
 #endif
 
 	fb = calloc(1, sizeof *fb);
+	fb->index = index;
 	fb->fd = fd;
 	fb->offset = offset;
 	fb->format = format;
@@ -187,8 +191,12 @@ window_create_buffer(struct window *window, int fd, int offset,
 }
 
 void
-window_show_buffer(struct window *window, struct fb *fb)
+window_show_buffer(struct window *window, struct fb *fb,
+		   fb_release_cb_t release_cb, void *cb_data)
 {
+	fb->release_cb = release_cb;
+	fb->cb_data = cb_data;
+
 	wl_surface_attach(window->surface, fb->buffer, 0, 0);
 	wl_surface_damage(window->surface, 0, 0, fb->width, fb->height);
 	wl_surface_commit(window->surface);

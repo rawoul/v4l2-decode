@@ -267,6 +267,17 @@ void *parser_thread_func(void *args)
 	return NULL;
 }
 
+static void
+buffer_released(struct fb *fb, void *data)
+{
+	struct instance *i = data;
+	int n = fb->index;
+
+	int ret = video_queue_buf_cap(i, n);
+	if (!ret)
+		i->video.cap_buf_flag[n] = 1;
+}
+
 void *main_thread_func(void *args)
 {
 	struct instance *i = (struct instance *)args;
@@ -317,11 +328,8 @@ void *main_thread_func(void *args)
 			save_frame(i, (void *)vid->cap_buf_addr[n][0],
 				   bytesused);
 
-			window_show_buffer(i->window, i->disp_buffers[n]);
-
-			ret = video_queue_buf_cap(i, n);
-			if (!ret)
-				vid->cap_buf_flag[n] = 1;
+			window_show_buffer(i->window, i->disp_buffers[n],
+					   buffer_released, i);
 		}
 
 next_event:
@@ -367,7 +375,7 @@ display_setup(struct instance *i)
 
 	for (n = 0; n < vid->cap_buf_cnt; n++) {
 		i->disp_buffers[n] =
-			window_create_buffer(i->window, vid->cap_ion_fd,
+			window_create_buffer(i->window, n, vid->cap_ion_fd,
 					     vid->cap_buf_off[n][0],
 					     vid->cap_buf_format,
 					     vid->cap_w, vid->cap_h,
