@@ -57,6 +57,8 @@ int get_codec(char *str)
 		return V4L2_PIX_FMT_MPEG4;
 	} else if (strncasecmp("h264", str, 5) == 0) {
 		return V4L2_PIX_FMT_H264;
+	} else if (strncasecmp("hevc", str, 5) == 0) {
+		return V4L2_PIX_FMT_HEVC;
 	} else if (strncasecmp("h263", str, 5) == 0) {
 		return V4L2_PIX_FMT_H263;
 	} else if (strncasecmp("xvid", str, 5) == 0) {
@@ -119,6 +121,7 @@ int parse_args(struct instance *i, int argc, char **argv)
 		i->parser.func = parse_mpeg4_stream;
 		break;
 	case V4L2_PIX_FMT_H264:
+	case V4L2_PIX_FMT_HEVC:
 		i->parser.func = parse_h264_stream;
 		break;
 	case V4L2_PIX_FMT_MPEG1:

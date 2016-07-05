@@ -23,6 +23,7 @@
 #include <assert.h>
 #include <fcntl.h>
 #include <string.h>
+#include <endian.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
@@ -39,6 +40,52 @@
 
 static char *dbg_type[2] = {"OUTPUT", "CAPTURE"};
 static char *dbg_status[2] = {"ON", "OFF"};
+
+#define CASE(ENUM) case ENUM: return #ENUM;
+
+static const char *fourcc_to_string(uint32_t fourcc)
+{
+	static __thread char s[4];
+	uint32_t fmt = htole32(fourcc);
+
+	memcpy(s, &fmt, 4);
+
+	return s;
+}
+
+static const char *v4l2_field_to_string(enum v4l2_field field)
+{
+	switch (field) {
+	CASE(V4L2_FIELD_ANY)
+	CASE(V4L2_FIELD_NONE)
+	CASE(V4L2_FIELD_TOP)
+	CASE(V4L2_FIELD_BOTTOM)
+	CASE(V4L2_FIELD_INTERLACED)
+	CASE(V4L2_FIELD_SEQ_TB)
+	CASE(V4L2_FIELD_SEQ_BT)
+	CASE(V4L2_FIELD_ALTERNATE)
+	CASE(V4L2_FIELD_INTERLACED_TB)
+	CASE(V4L2_FIELD_INTERLACED_BT)
+	default: return "unknown";
+	}
+}
+
+static const char *v4l2_colorspace_to_string(enum v4l2_colorspace cspace)
+{
+	switch (cspace) {
+	CASE(V4L2_COLORSPACE_SMPTE170M)
+	CASE(V4L2_COLORSPACE_SMPTE240M)
+	CASE(V4L2_COLORSPACE_REC709)
+	CASE(V4L2_COLORSPACE_BT878)
+	CASE(V4L2_COLORSPACE_470_SYSTEM_M)
+	CASE(V4L2_COLORSPACE_470_SYSTEM_BG)
+	CASE(V4L2_COLORSPACE_JPEG)
+	CASE(V4L2_COLORSPACE_SRGB)
+	default: return "unknown";
+	}
+}
+
+#undef CASE
 
 static void list_formats(struct instance *i, enum v4l2_buf_type type)
 {
@@ -102,8 +149,60 @@ int video_open(struct instance *i, char *name)
 		return -1;
 	}
 
-	info("caps (%s): driver=\"%s\" bus_info=\"%s\" card=\"%s\" fd=0x%x",
-	     name, cap.driver, cap.bus_info, cap.card, i->video.fd);
+	info("caps (%s): driver=\"%s\" bus_info=\"%s\" card=\"%s\" "
+	     "version=%u.%u.%u", name, cap.driver, cap.bus_info, cap.card,
+	     (cap.version >> 16) & 0xff,
+	     (cap.version >> 8) & 0xff,
+	     cap.version & 0xff);
+
+	info("  [%c] V4L2_CAP_VIDEO_CAPTURE",
+	     cap.capabilities & V4L2_CAP_VIDEO_CAPTURE ? '*' : ' ');
+	info("  [%c] V4L2_CAP_VIDEO_CAPTURE_MPLANE",
+	     cap.capabilities & V4L2_CAP_VIDEO_CAPTURE_MPLANE ? '*' : ' ');
+	info("  [%c] V4L2_CAP_VIDEO_OUTPUT",
+	     cap.capabilities & V4L2_CAP_VIDEO_OUTPUT ? '*' : ' ');
+	info("  [%c] V4L2_CAP_VIDEO_OUTPUT_MPLANE",
+	     cap.capabilities & V4L2_CAP_VIDEO_OUTPUT_MPLANE ? '*' : ' ');
+	info("  [%c] V4L2_CAP_VIDEO_M2M",
+	     cap.capabilities & V4L2_CAP_VIDEO_M2M ? '*' : ' ');
+	info("  [%c] V4L2_CAP_VIDEO_M2M_MPLANE",
+	     cap.capabilities & V4L2_CAP_VIDEO_M2M_MPLANE ? '*' : ' ');
+	info("  [%c] V4L2_CAP_VIDEO_OVERLAY",
+	     cap.capabilities & V4L2_CAP_VIDEO_OVERLAY ? '*' : ' ');
+	info("  [%c] V4L2_CAP_VBI_CAPTURE",
+	     cap.capabilities & V4L2_CAP_VBI_CAPTURE ? '*' : ' ');
+	info("  [%c] V4L2_CAP_VBI_OUTPUT",
+	     cap.capabilities & V4L2_CAP_VBI_OUTPUT ? '*' : ' ');
+	info("  [%c] V4L2_CAP_SLICED_VBI_CAPTURE",
+	     cap.capabilities & V4L2_CAP_SLICED_VBI_CAPTURE ? '*' : ' ');
+	info("  [%c] V4L2_CAP_SLICED_VBI_OUTPUT",
+	     cap.capabilities & V4L2_CAP_SLICED_VBI_OUTPUT ? '*' : ' ');
+	info("  [%c] V4L2_CAP_RDS_CAPTURE",
+	     cap.capabilities & V4L2_CAP_RDS_CAPTURE ? '*' : ' ');
+	info("  [%c] V4L2_CAP_VIDEO_OUTPUT_OVERLAY",
+	     cap.capabilities & V4L2_CAP_VIDEO_OUTPUT_OVERLAY ? '*' : ' ');
+	info("  [%c] V4L2_CAP_HW_FREQ_SEEK",
+	     cap.capabilities & V4L2_CAP_HW_FREQ_SEEK ? '*' : ' ');
+	info("  [%c] V4L2_CAP_RDS_OUTPUT",
+	     cap.capabilities & V4L2_CAP_RDS_OUTPUT ? '*' : ' ');
+	info("  [%c] V4L2_CAP_TUNER",
+	     cap.capabilities & V4L2_CAP_TUNER ? '*' : ' ');
+	info("  [%c] V4L2_CAP_AUDIO",
+	     cap.capabilities & V4L2_CAP_AUDIO ? '*' : ' ');
+	info("  [%c] V4L2_CAP_RADIO",
+	     cap.capabilities & V4L2_CAP_RADIO ? '*' : ' ');
+	info("  [%c] V4L2_CAP_MODULATOR",
+	     cap.capabilities & V4L2_CAP_MODULATOR ? '*' : ' ');
+	info("  [%c] V4L2_CAP_SDR_CAPTURE",
+	     cap.capabilities & V4L2_CAP_SDR_CAPTURE ? '*' : ' ');
+	info("  [%c] V4L2_CAP_EXT_PIX_FORMAT",
+	     cap.capabilities & V4L2_CAP_EXT_PIX_FORMAT ? '*' : ' ');
+	info("  [%c] V4L2_CAP_READWRITE",
+	     cap.capabilities & V4L2_CAP_READWRITE ? '*' : ' ');
+	info("  [%c] V4L2_CAP_ASYNCIO",
+	     cap.capabilities & V4L2_CAP_ASYNCIO ? '*' : ' ');
+	info("  [%c] V4L2_CAP_STREAMING",
+	     cap.capabilities & V4L2_CAP_STREAMING ? '*' : ' ');
 
 	if (!(cap.capabilities & V4L2_CAP_VIDEO_CAPTURE_MPLANE) ||
 	    !(cap.capabilities & V4L2_CAP_VIDEO_OUTPUT_MPLANE) ||
@@ -480,12 +579,16 @@ int video_setup_capture(struct instance *i, int extra_buf, int w, int h)
 		return -1;
 	}
 
-	dbg("video decoder buffer parameters: %dx%d, %d planes",
+	dbg("  %dx%d fmt=%s (%d planes) field=%s cspace=%s flags=0x%x",
 	    fmt.fmt.pix_mp.width, fmt.fmt.pix_mp.height,
-	    fmt.fmt.pix_mp.num_planes);
+	    fourcc_to_string(fmt.fmt.pix_mp.pixelformat),
+	    fmt.fmt.pix_mp.num_planes,
+	    v4l2_field_to_string(fmt.fmt.pix_mp.field),
+	    v4l2_colorspace_to_string(fmt.fmt.pix_mp.colorspace),
+	    fmt.fmt.pix_mp.flags);
 
 	for (n = 0; n < fmt.fmt.pix_mp.num_planes; n++)
-		dbg("  plane %d: size=%d stride=%d scanlines=%d", n,
+		dbg("    plane %d: size=%d stride=%d scanlines=%d", n,
 		    fmt.fmt.pix_mp.plane_fmt[n].sizeimage,
 		    fmt.fmt.pix_mp.plane_fmt[n].bytesperline,
 		    fmt.fmt.pix_mp.plane_fmt[n].reserved[0]);

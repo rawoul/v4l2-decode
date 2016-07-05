@@ -38,7 +38,7 @@ EXEC = v4l2_decode
 
 cflags = -Wall -pthread $(CFLAGS)
 ldflags = -pthread $(LDFLAGS)
-cppflags = -Iprotocol $(CPPFLAGS)
+cppflags = -Iprotocol -D_DEFAULT_SOURCE $(CPPFLAGS)
 ldlibs = -lm -lwayland-client
 
 all: $(EXEC)
