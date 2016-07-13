@@ -543,6 +543,7 @@ int video_setup_capture(struct instance *i, int extra_buf, int w, int h)
 	void *buf_addr;
 	int n;
 
+	memzero(fmt);
 	fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 	fmt.fmt.pix_mp.height = h;
 	fmt.fmt.pix_mp.width = w;
