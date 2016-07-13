@@ -471,7 +471,9 @@ alloc_ion_buffer(struct instance *i, size_t size)
 {
 	struct ion_allocation_data ion_alloc = { 0 };
 	struct ion_fd_data ion_fd_data = { 0 };
+	struct ion_handle_data ion_handle_data = { 0 };
 	static int ion_fd = -1;
+	int ret;
 
 	if (ion_fd < 0) {
 		ion_fd = open("/dev/ion", O_RDONLY);
@@ -500,16 +502,16 @@ alloc_ion_buffer(struct instance *i, size_t size)
 
 	if (ioctl(ion_fd, ION_IOC_MAP, &ion_fd_data) < 0) {
 		err("Failed to map ion buffer: %m");
-		goto free;
+		ret = -1;
+	} else {
+		ret = ion_fd_data.fd;
 	}
 
-	return ion_fd_data.fd;
-
-free:
-	if (ioctl(ion_fd, ION_IOC_FREE, ion_alloc.handle) < 0)
+	ion_handle_data.handle = ion_alloc.handle;
+	if (ioctl(ion_fd, ION_IOC_FREE, &ion_handle_data) < 0)
 		err("Failed to free ion buffer: %m");
 
-	return -1;
+	return ret;
 }
 
 static int get_msm_color_format(uint32_t fourcc)
