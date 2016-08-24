@@ -421,35 +421,12 @@ int video_stop(struct instance *i)
 	int ret;
 
 	memzero(dec);
-	dec.cmd = V4L2_DEC_CMD_STOP;
+	dec.flags = V4L2_DEC_QCOM_CMD_FLUSH_CAPTURE |
+		V4L2_DEC_QCOM_CMD_FLUSH_OUTPUT;
+	dec.cmd = V4L2_DEC_QCOM_CMD_FLUSH;
 	ret = ioctl(vid->fd, VIDIOC_DECODER_CMD, &dec);
 	if (ret < 0) {
 		err("DECODER_CMD failed (%s)", strerror(errno));
-		return -1;
-	}
-
-	/* HACK: streamoff failing, so bail out of here */
-	return 0;
-
-	memzero(reqbuf);
-	reqbuf.memory = V4L2_MEMORY_MMAP;
-	reqbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-
-	ret = ioctl(vid->fd, VIDIOC_REQBUFS, &reqbuf);
-	if (ret < 0) {
-		err("REQBUFS with count=0 on CAPTURE queue failed (%s)",
-		    strerror(errno));
-		return -1;
-	}
-
-	memzero(reqbuf);
-	reqbuf.memory = V4L2_MEMORY_MMAP;
-	reqbuf.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
-
-	ret = ioctl(vid->fd, VIDIOC_REQBUFS, &reqbuf);
-	if (ret < 0) {
-		err("REQBUFS with count=0 on OUTPUT queue failed (%s)",
-		    strerror(errno));
 		return -1;
 	}
 
@@ -462,6 +439,28 @@ int video_stop(struct instance *i)
 			   VIDIOC_STREAMOFF);
 	if (ret < 0)
 		err("STREAMOFF OUTPUT queue failed (%s)", strerror(errno));
+
+	memzero(reqbuf);
+	reqbuf.memory = V4L2_MEMORY_USERPTR;
+	reqbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+
+	ret = ioctl(vid->fd, VIDIOC_REQBUFS, &reqbuf);
+	if (ret < 0) {
+		err("REQBUFS with count=0 on CAPTURE queue failed (%s)",
+		    strerror(errno));
+		return -1;
+	}
+
+	memzero(reqbuf);
+	reqbuf.memory = V4L2_MEMORY_USERPTR;
+	reqbuf.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+
+	ret = ioctl(vid->fd, VIDIOC_REQBUFS, &reqbuf);
+	if (ret < 0) {
+		err("REQBUFS with count=0 on OUTPUT queue failed (%s)",
+		    strerror(errno));
+		return -1;
+	}
 
 	return 0;
 }
