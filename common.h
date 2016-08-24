@@ -164,6 +164,7 @@ struct instance {
 	struct queue queue;
 
 	/* Control */
+	int sigfd;
 	int error;   /* The error flag */
 	int finish;  /* Flag set when decoding has been completed and all
 			threads finish */

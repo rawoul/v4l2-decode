@@ -26,6 +26,8 @@
 #include <linux/videodev2.h>
 #include <media/msm_vidc.h>
 #include <sys/ioctl.h>
+#include <sys/signalfd.h>
+#include <signal.h>
 #include <poll.h>
 #include <pthread.h>
 #include <semaphore.h>
@@ -142,6 +144,8 @@ static int handle_video_event(struct instance *i)
 
 void cleanup(struct instance *i)
 {
+	if (i->sigfd != 1)
+		close(i->sigfd);
 	if (i->video.fd)
 		video_close(i);
 	if (i->in.fd)
@@ -363,12 +367,54 @@ handle_video_output(struct instance *i)
 	return 0;
 }
 
+static int
+handle_signal(struct instance *i)
+{
+	struct signalfd_siginfo siginfo;
+	sigset_t sigmask;
+
+	if (read(i->sigfd, &siginfo, sizeof (siginfo)) < 0) {
+		perror("signalfd/read");
+		return -1;
+	}
+
+	sigemptyset(&sigmask);
+	sigaddset(&sigmask, siginfo.ssi_signo);
+	sigprocmask(SIG_UNBLOCK, &sigmask, NULL);
+
+	i->finish = 1;
+	pthread_cond_signal(&i->cond);
+
+	return 0;
+}
+
+static int
+setup_signal(struct instance *i)
+{
+	sigset_t sigmask;
+	int fd;
+
+	sigemptyset(&sigmask);
+	sigaddset(&sigmask, SIGINT);
+	sigaddset(&sigmask, SIGTERM);
+
+	fd = signalfd(-1, &sigmask, SFD_CLOEXEC);
+	if (fd < 0) {
+		perror("signalfd");
+		return -1;
+	}
+
+	sigprocmask(SIG_BLOCK, &sigmask, NULL);
+	i->sigfd = fd;
+
+	return 0;
+}
 
 void *main_thread_func(void *args)
 {
 	struct instance *i = (struct instance *)args;
 	struct video *vid = &i->video;
-	struct pollfd pfd[1];
+	struct pollfd pfd[2];
 	short revents;
 	int nfds;
 	int ret;
@@ -379,6 +425,12 @@ void *main_thread_func(void *args)
 	pfd[0].events = POLLIN | POLLRDNORM | POLLOUT | POLLWRNORM | POLLPRI;
 
 	nfds = 1;
+
+	if (i->sigfd != -1) {
+		pfd[nfds].fd = i->sigfd;
+		pfd[nfds].events = POLLIN;
+		nfds++;
+	}
 
 	while (!i->finish && display_is_running(i->display)) {
 		ret = poll(pfd, nfds, -1);
@@ -400,6 +452,9 @@ void *main_thread_func(void *args)
 					handle_video_output(i);
 				if (revents & POLLPRI)
 					handle_video_event(i);
+				break;
+			case 1:
+				handle_signal(i);
 				break;
 			}
 		}
@@ -449,6 +504,8 @@ int main(int argc, char **argv)
 	pthread_t parser_thread;
 	pthread_t main_thread;
 	int ret, n;
+
+	inst.sigfd = -1;
 
 	ret = parse_args(&inst, argc, argv);
 	if (ret) {
@@ -514,6 +571,8 @@ int main(int argc, char **argv)
 		goto err;
 
 	dbg("Launching threads");
+
+	setup_signal(&inst);
 
 	if (pthread_create(&parser_thread, NULL, parser_thread_func, &inst))
 		goto err;
