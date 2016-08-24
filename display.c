@@ -19,6 +19,7 @@ struct display {
 	struct wp_viewporter *viewporter;
 	struct zwp_linux_dmabuf_v1 *dmabuf;
 	uint32_t drm_formats[32];
+	int compositor_version;
 	int drm_format_count;
 	int running;
 };
@@ -56,7 +57,12 @@ window_commit(struct window *w)
 	wl_region_destroy(region);
 
 	wl_surface_attach(w->surface, fb ? fb->buffer : NULL, 0, 0);
-	wl_surface_damage(w->surface, 0, 0, w->width, w->height);
+	if (fb && display->compositor_version >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION)
+		wl_surface_damage_buffer(w->surface, 0, 0,
+					 fb->width, fb->height);
+	else
+		wl_surface_damage(w->surface, 0, 0, w->width, w->height);
+
 	wl_surface_commit(w->surface);
 }
 
@@ -341,8 +347,10 @@ registry_handle_global(void *data, struct wl_registry *registry,
 	struct display *d = data;
 
 	if (!strcmp(interface, "wl_compositor")) {
+		d->compositor_version = MIN(version, 4);
 		d->compositor = wl_registry_bind(registry, id,
-						 &wl_compositor_interface, 1);
+						 &wl_compositor_interface,
+						 d->compositor_version);
 	} else if (!strcmp(interface, "wp_viewporter")) {
 		d->viewporter = wl_registry_bind(registry, id,
 						 &wp_viewporter_interface, 1);

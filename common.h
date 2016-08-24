@@ -65,6 +65,8 @@
 #define dbg(...) {}
 #endif /* DEBUG */
 
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+
 #define memzero(x)	memset(&(x), 0, sizeof (x));
 
 /* Maximum number of output buffers */
