@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
 #include <assert.h>
@@ -6,6 +7,7 @@
 #include <wayland-client.h>
 
 #include "common.h"
+#include "viewporter-client-protocol.h"
 #include "xdg-shell-unstable-v6-client-protocol.h"
 #include "linux-dmabuf-unstable-v1-client-protocol.h"
 
@@ -14,6 +16,7 @@ struct display {
 	struct wl_registry *registry;
 	struct wl_compositor *compositor;
 	struct zxdg_shell_v6 *xdg_shell;
+	struct wp_viewporter *viewporter;
 	struct zwp_linux_dmabuf_v1 *dmabuf;
 	uint32_t drm_formats[32];
 	int drm_format_count;
@@ -23,8 +26,13 @@ struct display {
 struct window {
 	struct display *display;
 	struct wl_surface *surface;
+	struct wp_viewport *viewport;
 	struct zxdg_surface_v6 *xdg_surface;
 	struct zxdg_toplevel_v6 *xdg_toplevel;
+	struct fb *buffer;
+	int width, height;
+	bool size_set;
+	bool configured;
 };
 
 void
@@ -36,10 +44,60 @@ fb_destroy(struct fb *fb)
 }
 
 static void
+window_commit(struct window *w)
+{
+	struct display *display = w->display;
+	struct fb *fb = w->buffer;
+	struct wl_region *region;
+
+	region = wl_compositor_create_region(display->compositor);
+	wl_region_add(region, 0, 0, w->width, w->height);
+	wl_surface_set_opaque_region(w->surface, region);
+	wl_region_destroy(region);
+
+	wl_surface_attach(w->surface, fb ? fb->buffer : NULL, 0, 0);
+	wl_surface_damage(w->surface, 0, 0, w->width, w->height);
+	wl_surface_commit(w->surface);
+}
+
+static int
+window_recenter(struct window *w)
+{
+	struct fb *fb = w->buffer;
+	int video_width;
+	int video_height;
+
+	if (!fb || !w->viewport || w->width <= 0 || w->height <= 0)
+		return 0;
+
+	if (fb->width > fb->height) {
+		video_width = w->width;
+		video_height = w->width * fb->height / fb->width;
+	} else {
+		video_width = w->height * fb->width / fb->height;
+		video_height = w->height;
+	}
+
+	wp_viewport_set_destination(w->viewport, video_width, video_height);
+
+	return 1;
+}
+
+static void
 xdg_toplevel_handle_configure(void *data, struct zxdg_toplevel_v6 *xdg_toplevel,
 			      int32_t width, int32_t height,
 			      struct wl_array *states)
 {
+	struct window *w = data;
+
+	if (width <= 0 || height <= 0 || !w->viewport)
+		return;
+
+	if (w->width != width || w->height != height) {
+		w->width = width;
+		w->height = height;
+		w->size_set = true;
+	}
 }
 
 static void
@@ -64,6 +122,11 @@ xdg_surface_handle_configure(void *data, struct zxdg_surface_v6 *xdg_surface,
 	struct display *d = w->display;
 
 	zxdg_surface_v6_ack_configure(xdg_surface, serial);
+
+	w->configured = true;
+	if (window_recenter(w))
+		window_commit(w);
+
 	wl_display_flush(d->display);
 }
 
@@ -101,6 +164,12 @@ display_create_window(struct display *display)
 		wl_surface_commit(window->surface);
 	}
 
+	if (display->viewporter) {
+		window->viewport =
+			wp_viewporter_get_viewport(display->viewporter,
+						   window->surface);
+	}
+
 	return window;
 }
 
@@ -111,6 +180,8 @@ window_destroy(struct window *window)
 		zxdg_toplevel_v6_destroy(window->xdg_toplevel);
 	if (window->xdg_surface)
 		zxdg_surface_v6_destroy(window->xdg_surface);
+	if (window->viewport)
+		wp_viewport_destroy(window->viewport);
 
 	wl_surface_destroy(window->surface);
 
@@ -223,9 +294,18 @@ window_show_buffer(struct window *window, struct fb *fb,
 	fb->release_cb = release_cb;
 	fb->cb_data = cb_data;
 
-	wl_surface_attach(window->surface, fb->buffer, 0, 0);
-	wl_surface_damage(window->surface, 0, 0, fb->width, fb->height);
-	wl_surface_commit(window->surface);
+	window->buffer = fb;
+
+	if (!window->size_set) {
+		window->width = fb->width;
+		window->height = fb->height;
+	}
+
+	if (window->configured) {
+		window_recenter(window);
+		window_commit(window);
+	}
+
 	wl_display_roundtrip(window->display->display);
 }
 
@@ -263,6 +343,9 @@ registry_handle_global(void *data, struct wl_registry *registry,
 	if (!strcmp(interface, "wl_compositor")) {
 		d->compositor = wl_registry_bind(registry, id,
 						 &wl_compositor_interface, 1);
+	} else if (!strcmp(interface, "wp_viewporter")) {
+		d->viewporter = wl_registry_bind(registry, id,
+						 &wp_viewporter_interface, 1);
 	} else if (!strcmp(interface, "zxdg_shell_v6")) {
 		d->xdg_shell = wl_registry_bind(registry, id,
 						&zxdg_shell_v6_interface, 1);
@@ -290,6 +373,8 @@ static const struct wl_registry_listener registry_listener = {
 void
 display_destroy(struct display *display)
 {
+	if (display->viewporter)
+		wp_viewporter_destroy(display->viewporter);
 	if (display->compositor)
 		wl_compositor_destroy(display->compositor);
 	if (display->xdg_shell)
