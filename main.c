@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <linux/videodev2.h>
+#include <media/msm_vidc.h>
 #include <sys/ioctl.h>
 #include <poll.h>
 #include <pthread.h>
@@ -79,8 +80,9 @@ static int subscribe_for_events(int fd)
 	return 0;
 }
 
-static int handle_v4l_events(struct video *vid)
+static int handle_video_event(struct instance *i)
 {
+	struct video *vid = &i->video;
 	struct v4l2_event event;
 	int ret;
 
@@ -93,22 +95,22 @@ static int handle_v4l_events(struct video *vid)
 
 	switch (event.type) {
 	case V4L2_EVENT_MSM_VIDC_PORT_SETTINGS_CHANGED_INSUFFICIENT:
-		dbg("Port Reconfig recieved insufficient\n");
+		dbg("Port Reconfig received insufficient");
 		break;
 	case V4L2_EVENT_MSM_VIDC_PORT_SETTINGS_CHANGED_SUFFICIENT:
-		dbg("Setting changed sufficient\n");
+		dbg("Setting changed sufficient");
 		break;
 	case V4L2_EVENT_MSM_VIDC_FLUSH_DONE:
-		dbg("Flush Done Recieved \n");
+		dbg("Flush Done received");
 		break;
 	case V4L2_EVENT_MSM_VIDC_CLOSE_DONE:
-		dbg("Close Done Recieved \n");
+		dbg("Close Done received");
 		break;
 	case V4L2_EVENT_MSM_VIDC_SYS_ERROR:
-		dbg("SYS Error Recieved \n");
+		dbg("SYS Error received");
 		break;
 	default:
-		dbg("unknown event type occurred %x\n", event.type);
+		dbg("unknown event type occurred %x", event.type);
 		break;
 	}
 
@@ -349,8 +351,7 @@ next_event:
 		}
 
 		if (revents & POLLPRI) {
-			dbg("v4l2 event");
-			handle_v4l_events(vid);
+			handle_video_event(i);
 		}
 	}
 
@@ -416,12 +417,11 @@ int main(int argc, char **argv)
 	ret = video_open(&inst, inst.video.name);
 	if (ret)
 		goto err;
-#if 0
-	/* TODO: */
+
 	ret = subscribe_for_events(vid->fd);
 	if (ret)
 		goto err;
-#endif
+
 	ret = video_setup_output(&inst, inst.parser.codec,
 				 STREAM_BUUFER_SIZE, 6);
 	if (ret)
