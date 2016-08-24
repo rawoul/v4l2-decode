@@ -249,7 +249,7 @@ void *parser_thread_func(void *args)
 
 	dbg("Parser thread started");
 
-	while (!i->error && !i->finish && !i->parser.finished) {
+	while (!i->finish && !i->parser.finished) {
 		pthread_mutex_lock(&i->lock);
 
 		for (n = 0; n < vid->out_buf_cnt && vid->out_buf_flag[n]; n++)
