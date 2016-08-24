@@ -121,8 +121,10 @@ int parse_args(struct instance *i, int argc, char **argv)
 		i->parser.func = parse_mpeg4_stream;
 		break;
 	case V4L2_PIX_FMT_H264:
-	case V4L2_PIX_FMT_HEVC:
 		i->parser.func = parse_h264_stream;
+		break;
+	case V4L2_PIX_FMT_HEVC:
+		i->parser.func = parse_h265_stream;
 		break;
 	case V4L2_PIX_FMT_MPEG1:
 	case V4L2_PIX_FMT_MPEG2:
