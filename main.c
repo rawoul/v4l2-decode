@@ -303,84 +303,114 @@ buffer_released(struct fb *fb, void *data)
 		i->video.cap_buf_flag[n] = 1;
 }
 
+static int
+handle_video_capture(struct instance *i)
+{
+	struct video *vid = &i->video;
+	struct timeval tv;
+	unsigned int bytesused;
+	int ret, n, finished;
+
+	/* capture buffer is ready */
+
+	ret = video_dequeue_capture(i, &n, &finished,
+				    &bytesused, &tv);
+	if (ret < 0) {
+		err("dequeue capture buffer fail");
+		return ret;
+	}
+
+	vid->cap_buf_flag[n] = 0;
+
+	info("decoded frame %ld with ts %lu.%03lu",
+	     vid->total_captured, tv.tv_sec, tv.tv_usec / 1000);
+
+	vid->total_captured++;
+
+	save_frame(i, (void *)vid->cap_buf_addr[n][0],
+		   bytesused);
+
+	window_show_buffer(i->window, i->disp_buffers[n],
+			   buffer_released, i);
+
+	if (finished) {
+		i->finish = 1;
+		pthread_cond_signal(&i->cond);
+	}
+
+	return 0;
+}
+
+static int
+handle_video_output(struct instance *i)
+{
+	struct video *vid = &i->video;
+	int ret, n;
+
+	ret = video_dequeue_output(i, &n);
+	if (ret < 0) {
+		err("dequeue output buffer fail");
+		return ret;
+	}
+
+	dbg("dequeued output buffer %d", n);
+
+	pthread_mutex_lock(&i->lock);
+	vid->out_buf_flag[n] = 0;
+	pthread_cond_signal(&i->cond);
+	pthread_mutex_unlock(&i->lock);
+
+	return 0;
+}
+
+
 void *main_thread_func(void *args)
 {
 	struct instance *i = (struct instance *)args;
 	struct video *vid = &i->video;
-	struct pollfd pfd;
+	struct pollfd pfd[1];
 	short revents;
-	int ret, n, finished;
+	int nfds;
+	int ret;
 
 	dbg("main thread started");
 
-	pfd.fd = vid->fd;
-	pfd.events = POLLIN | POLLRDNORM | POLLOUT | POLLWRNORM |
-		     POLLRDBAND | POLLPRI;
+	pfd[0].fd = vid->fd;
+	pfd[0].events = POLLIN | POLLRDNORM | POLLOUT | POLLWRNORM | POLLPRI;
 
-	while (display_is_running(i->display)) {
-		ret = poll(&pfd, 1, 10000);
-		if (!ret) {
-			err("poll timeout");
-			break;
-		} else if (ret < 0) {
+	nfds = 1;
+
+	while (!i->finish && display_is_running(i->display)) {
+		ret = poll(pfd, nfds, -1);
+		if (ret <= 0) {
 			err("poll error");
 			break;
 		}
 
-		revents = pfd.revents;
+		for (int idx = 0; idx < nfds; idx++) {
+			revents = pfd[idx].revents;
+			if (!revents)
+				continue;
 
-		if (revents & (POLLIN | POLLRDNORM)) {
-			struct timeval tv;
-			unsigned int bytesused;
-
-			/* capture buffer is ready */
-
-			ret = video_dequeue_capture(i, &n, &finished,
-						    &bytesused, &tv);
-			if (ret < 0)
-				goto next_event;
-
-			vid->cap_buf_flag[n] = 0;
-
-			info("decoded frame %ld with ts %lu.%03lu",
-			     vid->total_captured, tv.tv_sec, tv.tv_usec / 1000);
-
-			if (finished)
+			switch (idx) {
+			case 0:
+				if (revents & (POLLIN | POLLRDNORM))
+					handle_video_capture(i);
+				if (revents & (POLLOUT | POLLWRNORM))
+					handle_video_output(i);
+				if (revents & POLLPRI)
+					handle_video_event(i);
 				break;
-
-			vid->total_captured++;
-
-			save_frame(i, (void *)vid->cap_buf_addr[n][0],
-				   bytesused);
-
-			window_show_buffer(i->window, i->disp_buffers[n],
-					   buffer_released, i);
-		}
-
-next_event:
-		if (revents & (POLLOUT | POLLWRNORM)) {
-
-			ret = video_dequeue_output(i, &n);
-			if (ret < 0) {
-				err("dequeue output buffer fail");
-			} else {
-				pthread_mutex_lock(&i->lock);
-				vid->out_buf_flag[n] = 0;
-				pthread_cond_signal(&i->cond);
-				pthread_mutex_unlock(&i->lock);
 			}
-
-			dbg("dequeued output buffer %d", n);
-		}
-
-		if (revents & POLLPRI) {
-			handle_video_event(i);
 		}
 	}
 
-	dbg("main thread finished");
+	if (!i->finish) {
+		i->finish = 1;
+		pthread_cond_signal(&i->cond);
+	}
 
-	return NULL;
+	dbg("main thread finished");
 }
 
 static int
