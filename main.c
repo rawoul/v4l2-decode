@@ -414,9 +414,8 @@ setup_signal(struct instance *i)
 	return 0;
 }
 
-void *main_thread_func(void *args)
+void main_loop(struct instance *i)
 {
-	struct instance *i = (struct instance *)args;
 	struct video *vid = &i->video;
 	struct pollfd pfd[2];
 	short revents;
@@ -506,7 +505,6 @@ int main(int argc, char **argv)
 	struct instance inst;
 	struct video *vid = &inst.video;
 	pthread_t parser_thread;
-	pthread_t main_thread;
 	int ret, n;
 
 	inst.sigfd = -1;
@@ -581,11 +579,9 @@ int main(int argc, char **argv)
 	if (pthread_create(&parser_thread, NULL, parser_thread_func, &inst))
 		goto err;
 
-	if (pthread_create(&main_thread, NULL, main_thread_func, &inst))
-		goto err;
+	main_loop(&inst);
 
 	pthread_join(parser_thread, 0);
-	pthread_join(main_thread, 0);
 
 	dbg("Threads have finished");
 
