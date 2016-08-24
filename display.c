@@ -6,14 +6,14 @@
 #include <wayland-client.h>
 
 #include "common.h"
-#include "xdg-shell-unstable-v5-client-protocol.h"
+#include "xdg-shell-unstable-v6-client-protocol.h"
 #include "linux-dmabuf-unstable-v1-client-protocol.h"
 
 struct display {
 	struct wl_display *display;
 	struct wl_registry *registry;
 	struct wl_compositor *compositor;
-	struct xdg_shell *shell;
+	struct zxdg_shell_v6 *xdg_shell;
 	struct zwp_linux_dmabuf_v1 *dmabuf;
 	uint32_t drm_formats[32];
 	int drm_format_count;
@@ -23,7 +23,8 @@ struct display {
 struct window {
 	struct display *display;
 	struct wl_surface *surface;
-	struct xdg_surface *xdg_surface;
+	struct zxdg_surface_v6 *xdg_surface;
+	struct zxdg_toplevel_v6 *xdg_toplevel;
 };
 
 void
@@ -35,23 +36,39 @@ fb_destroy(struct fb *fb)
 }
 
 static void
-handle_configure(void *data, struct xdg_surface *surface,
-		 int32_t width, int32_t height,
-		 struct wl_array *states, uint32_t serial)
+xdg_toplevel_handle_configure(void *data, struct zxdg_toplevel_v6 *xdg_toplevel,
+			      int32_t width, int32_t height,
+			      struct wl_array *states)
 {
 }
 
 static void
-handle_close(void *data, struct xdg_surface *xdg_surface)
+xdg_toplevel_handle_close(void *data, struct zxdg_toplevel_v6 *xdg_toplevel)
 {
-	struct display *d = data;
+	struct window *w = data;
+	struct display *d = w->display;
 
 	d->running = 0;
 }
 
-static const struct xdg_surface_listener xdg_surface_listener = {
-	handle_configure,
-	handle_close,
+static const struct zxdg_toplevel_v6_listener xdg_toplevel_listener = {
+	xdg_toplevel_handle_configure,
+	xdg_toplevel_handle_close,
+};
+
+static void
+xdg_surface_handle_configure(void *data, struct zxdg_surface_v6 *xdg_surface,
+			     uint32_t serial)
+{
+	struct window *w = data;
+	struct display *d = w->display;
+
+	zxdg_surface_v6_ack_configure(xdg_surface, serial);
+	wl_display_flush(d->display);
+}
+
+static const struct zxdg_surface_v6_listener xdg_surface_listener = {
+	xdg_surface_handle_configure,
 };
 
 struct window *
@@ -66,15 +83,22 @@ display_create_window(struct display *display)
 	window->display = display;
 	window->surface = wl_compositor_create_surface(display->compositor);
 
-	if (display->shell) {
+	if (display->xdg_shell) {
 		window->xdg_surface =
-			xdg_shell_get_xdg_surface(display->shell,
-			                          window->surface);
+			zxdg_shell_v6_get_xdg_surface(display->xdg_shell,
+						      window->surface);
 
-		xdg_surface_add_listener(window->xdg_surface,
-		                         &xdg_surface_listener, window);
+		zxdg_surface_v6_add_listener(window->xdg_surface,
+					     &xdg_surface_listener, window);
 
-		xdg_surface_set_title(window->xdg_surface, "v4l-decode");
+		window->xdg_toplevel =
+			zxdg_surface_v6_get_toplevel(window->xdg_surface);
+
+		zxdg_toplevel_v6_add_listener(window->xdg_toplevel,
+					      &xdg_toplevel_listener, window);
+		zxdg_toplevel_v6_set_title(window->xdg_toplevel, "v4l-decode");
+
+		wl_surface_commit(window->surface);
 	}
 
 	return window;
@@ -83,8 +107,10 @@ display_create_window(struct display *display)
 void
 window_destroy(struct window *window)
 {
+	if (window->xdg_toplevel)
+		zxdg_toplevel_v6_destroy(window->xdg_toplevel);
 	if (window->xdg_surface)
-		xdg_surface_destroy(window->xdg_surface);
+		zxdg_surface_v6_destroy(window->xdg_surface);
 
 	wl_surface_destroy(window->surface);
 
@@ -218,20 +244,15 @@ static const struct zwp_linux_dmabuf_v1_listener dmabuf_listener = {
 };
 
 static void
-xdg_shell_ping(void *data, struct xdg_shell *shell, uint32_t serial)
+xdg_shell_handle_ping(void *data, struct zxdg_shell_v6 *xdg_shell,
+		      uint32_t serial)
 {
-	xdg_shell_pong(shell, serial);
+	zxdg_shell_v6_pong(xdg_shell, serial);
 }
 
-static const struct xdg_shell_listener xdg_shell_listener = {
-	xdg_shell_ping,
+static const struct zxdg_shell_v6_listener xdg_shell_listener = {
+	xdg_shell_handle_ping,
 };
-
-#define XDG_VERSION 5
-#ifdef static_assert
-static_assert(XDG_VERSION == XDG_SHELL_VERSION_CURRENT,
-	      "Interface version doesn't match implementation version");
-#endif
 
 static void
 registry_handle_global(void *data, struct wl_registry *registry,
@@ -242,11 +263,11 @@ registry_handle_global(void *data, struct wl_registry *registry,
 	if (!strcmp(interface, "wl_compositor")) {
 		d->compositor = wl_registry_bind(registry, id,
 						 &wl_compositor_interface, 1);
-	} else if (!strcmp(interface, "xdg_shell")) {
-		d->shell = wl_registry_bind(registry, id,
-					    &xdg_shell_interface, 1);
-		xdg_shell_use_unstable_version(d->shell, XDG_VERSION);
-		xdg_shell_add_listener(d->shell, &xdg_shell_listener, d);
+	} else if (!strcmp(interface, "zxdg_shell_v6")) {
+		d->xdg_shell = wl_registry_bind(registry, id,
+						&zxdg_shell_v6_interface, 1);
+		zxdg_shell_v6_add_listener(d->xdg_shell,
+					   &xdg_shell_listener, d);
 	} else if (strcmp(interface, "zwp_linux_dmabuf_v1") == 0) {
 		d->dmabuf = wl_registry_bind(registry, id,
 		                             &zwp_linux_dmabuf_v1_interface, 1);
@@ -271,8 +292,8 @@ display_destroy(struct display *display)
 {
 	if (display->compositor)
 		wl_compositor_destroy(display->compositor);
-	if (display->shell)
-		xdg_shell_destroy(display->shell);
+	if (display->xdg_shell)
+		zxdg_shell_v6_destroy(display->xdg_shell);
 	if (display->dmabuf)
 		zwp_linux_dmabuf_v1_destroy(display->dmabuf);
 	if (display->registry)
@@ -302,7 +323,7 @@ display_create(void)
 				 display);
 
 	wl_display_roundtrip(display->display);
-	if (!display->shell || !display->dmabuf) {
+	if (!display->xdg_shell || !display->dmabuf) {
 		err("missing wayland globals");
 		goto fail;
 	}

@@ -27,8 +27,8 @@ WAYLAND_SCANNER := $(shell $(PKG_CONFIG) --variable=wayland_scanner wayland-scan
 WAYLAND_PROTOCOLS_DATADIR := $(shell $(PKG_CONFIG) --variable=pkgdatadir wayland-protocols)
 
 GENERATED_SOURCES = \
-  protocol/xdg-shell-unstable-v5-protocol.c \
-  protocol/xdg-shell-unstable-v5-client-protocol.h \
+  protocol/xdg-shell-unstable-v6-protocol.c \
+  protocol/xdg-shell-unstable-v6-client-protocol.h \
   protocol/linux-dmabuf-unstable-v1-protocol.c \
   protocol/linux-dmabuf-unstable-v1-client-protocol.h
 
@@ -75,13 +75,4 @@ protocol/%-server-protocol.h : $(WAYLAND_PROTOCOLS_DATADIR)/$$(call protostabili
 	mkdir -p $(@D) && $(WAYLAND_SCANNER) server-header < $< > $@
 
 protocol/%-client-protocol.h : $(WAYLAND_PROTOCOLS_DATADIR)/$$(call protostability,$$*)/$$(call protoname,$$*)/$$*.xml
-	mkdir -p $(@D) && $(WAYLAND_SCANNER) client-header < $< > $@
-
-protocol/%-protocol.c : $(top_srcdir)/protocol/%.xml
-	mkdir -p $(@D) && $(WAYLAND_SCANNER) code < $< > $@
-
-protocol/%-server-protocol.h : $(top_srcdir)/protocol/%.xml
-	mkdir -p $(@D) && $(WAYLAND_SCANNER) server-header < $< > $@
-
-protocol/%-client-protocol.h : $(top_srcdir)/protocol/%.xml
 	mkdir -p $(@D) && $(WAYLAND_SCANNER) client-header < $< > $@
