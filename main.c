@@ -144,6 +144,10 @@ static int handle_video_event(struct instance *i)
 
 void cleanup(struct instance *i)
 {
+	if (i->window)
+		window_destroy(i->window);
+	if (i->display)
+		display_destroy(i->display);
 	if (i->sigfd != 1)
 		close(i->sigfd);
 	if (i->video.fd)
@@ -469,7 +473,7 @@ void *main_thread_func(void *args)
 }
 
 static int
-display_setup(struct instance *i)
+setup_display(struct instance *i)
 {
 	struct video *vid = &i->video;
 	int n;
@@ -545,7 +549,7 @@ int main(int argc, char **argv)
 	if (ret)
 		goto err;
 
-	ret = display_setup(&inst);
+	ret = setup_display(&inst);
 	if (ret)
 		goto err;
 
