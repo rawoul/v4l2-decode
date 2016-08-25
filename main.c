@@ -446,12 +446,6 @@ void main_loop(struct instance *i)
 		while (wl_display_prepare_read(wl_display) != 0)
 			wl_display_dispatch_pending(wl_display);
 
-		ret = poll(pfd, nfds, -1);
-		if (ret <= 0) {
-			err("poll error");
-			break;
-		}
-
 		ret = wl_display_flush(wl_display);
 		if (ret < 0) {
 			if (errno == EAGAIN)
@@ -461,6 +455,12 @@ void main_loop(struct instance *i)
 				wl_display_cancel_read(wl_display);
 				break;
 			}
+		}
+
+		ret = poll(pfd, nfds, -1);
+		if (ret <= 0) {
+			err("poll error");
+			break;
 		}
 
 		ret = wl_display_read_events(wl_display);
