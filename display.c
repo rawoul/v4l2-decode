@@ -107,7 +107,7 @@ window_recenter(struct window *w)
 	if (!fb || !w->viewport || w->width <= 0 || w->height <= 0)
 		return 0;
 
-	if (fb->width > fb->height) {
+	if (fb->width * w->height > fb->height * w->width) {
 		video_width = w->width;
 		video_height = w->width * fb->height / fb->width;
 	} else {
