@@ -23,6 +23,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <linux/input.h>
 #include <linux/videodev2.h>
 #include <media/msm_vidc.h>
 #include <sys/ioctl.h>
@@ -507,6 +508,28 @@ void main_loop(struct instance *i)
 	dbg("main thread finished");
 }
 
+static void
+handle_window_key(struct window *window, uint32_t time, uint32_t key,
+		  enum wl_keyboard_key_state state)
+{
+	struct instance *i = window_get_user_data(window);
+
+	if (state != WL_KEYBOARD_KEY_STATE_PRESSED)
+		return;
+
+	switch (key) {
+	case KEY_ESC:
+		i->finish = 1;
+		pthread_cond_signal(&i->cond);
+		break;
+
+	case KEY_SPACE:
+		info("%s", i->paused ? "Resume" : "Pause");
+		i->paused = !i->paused;
+		break;
+	}
+}
+
 static int
 setup_display(struct instance *i)
 {
@@ -520,6 +543,9 @@ setup_display(struct instance *i)
 	i->window = display_create_window(i->display);
 	if (!i->window)
 		return -1;
+
+	window_set_user_data(i->window, i);
+	window_set_key_callback(i->window, handle_window_key);
 
 	for (n = 0; n < vid->cap_buf_cnt; n++) {
 		i->disp_buffers[n] =

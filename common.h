@@ -167,6 +167,7 @@ struct instance {
 
 	/* Control */
 	int sigfd;
+	int paused;
 	int finish;  /* Flag set when decoding has been completed and all
 			threads finish */
 
