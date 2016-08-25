@@ -40,8 +40,10 @@ struct window {
 	struct zxdg_toplevel_v6 *xdg_toplevel;
 	struct fb *buffer;
 	int width, height;
+	int saved_width, saved_height;
 	bool size_set;
 	bool configured;
+	bool fullscreen;
 
 	window_key_cb_t key_cb;
 	void *user_data;
@@ -118,12 +120,47 @@ window_recenter(struct window *w)
 	return 1;
 }
 
+void
+window_toggle_fullscreen(struct window *w)
+{
+	if (!w->xdg_toplevel)
+		return;
+
+	if (w->fullscreen)
+		zxdg_toplevel_v6_unset_fullscreen(w->xdg_toplevel);
+	else
+		zxdg_toplevel_v6_set_fullscreen(w->xdg_toplevel, NULL);
+}
+
 static void
 xdg_toplevel_handle_configure(void *data, struct zxdg_toplevel_v6 *xdg_toplevel,
 			      int32_t width, int32_t height,
 			      struct wl_array *states)
 {
 	struct window *w = data;
+	uint32_t *state_p;
+	bool fullscreen = false;
+
+	wl_array_for_each(state_p, states) {
+		switch (*state_p) {
+		case ZXDG_TOPLEVEL_V6_STATE_FULLSCREEN:
+			fullscreen = true;
+			break;
+		default:
+			break;
+		}
+	}
+
+	if (fullscreen != w->fullscreen) {
+		if (fullscreen) {
+			w->saved_width = w->width;
+			w->saved_height = w->height;
+		} else {
+			w->width = w->saved_width;
+			w->height = w->saved_height;
+		}
+		w->fullscreen = fullscreen;
+	}
 
 	if (width <= 0 || height <= 0 || !w->viewport)
 		return;

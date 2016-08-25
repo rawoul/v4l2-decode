@@ -37,6 +37,7 @@ void display_destroy(struct display *display);
 void window_set_user_data(struct window *w, void *data);
 void *window_get_user_data(struct window *w);
 void window_set_key_callback(struct window *w, window_key_cb_t handler);
+void window_toggle_fullscreen(struct window *w);
 
 void window_show_buffer(struct window *window, struct fb *fb,
 			fb_release_cb_t release_cb, void *cb_data);

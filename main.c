@@ -532,6 +532,10 @@ handle_window_key(struct window *window, uint32_t time, uint32_t key,
 		info("%s", i->paused ? "Resume" : "Pause");
 		i->paused = !i->paused;
 		break;
+
+	case KEY_F:
+		window_toggle_fullscreen(i->window);
+		break;
 	}
 }
 
