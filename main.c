@@ -427,7 +427,7 @@ void main_loop(struct instance *i)
 	dbg("main thread started");
 
 	pfd[0].fd = vid->fd;
-	pfd[0].events = POLLIN | POLLRDNORM | POLLOUT | POLLWRNORM | POLLPRI;
+	pfd[0].events = POLLOUT | POLLWRNORM | POLLPRI;
 
 	wl_display = display_get_wl_display(i->display);
 	pfd[1].fd = wl_display_get_fd(wl_display);
@@ -474,6 +474,11 @@ void main_loop(struct instance *i)
 			err("wl_display_dispatch_pending: %m");
 			break;
 		}
+
+		if (i->paused)
+			pfd[0].events &= ~(POLLIN | POLLRDNORM);
+		else
+			pfd[0].events |= POLLIN | POLLRDNORM;
 
 		for (int idx = 0; idx < nfds; idx++) {
 			revents = pfd[idx].revents;
