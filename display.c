@@ -15,16 +15,24 @@ struct display {
 	struct wl_display *display;
 	struct wl_registry *registry;
 	struct wl_compositor *compositor;
+	struct wl_seat *seat;
+	struct wl_keyboard *keyboard;
 	struct zxdg_shell_v6 *xdg_shell;
 	struct wp_viewporter *viewporter;
 	struct zwp_linux_dmabuf_v1 *dmabuf;
 	uint32_t drm_formats[32];
 	int compositor_version;
+	int seat_version;
 	int drm_format_count;
 	int running;
+
+	struct window *keyboard_focus;
+	struct wl_list window_list;
 };
 
 struct window {
+	struct wl_list link;
+
 	struct display *display;
 	struct wl_surface *surface;
 	struct wp_viewport *viewport;
@@ -34,6 +42,9 @@ struct window {
 	int width, height;
 	bool size_set;
 	bool configured;
+
+	window_key_cb_t key_cb;
+	void *user_data;
 };
 
 void
@@ -42,6 +53,24 @@ fb_destroy(struct fb *fb)
 	if (fb->buffer)
 		wl_buffer_destroy(fb->buffer);
 	free(fb);
+}
+
+void
+window_set_user_data(struct window *w, void *data)
+{
+	w->user_data = data;
+}
+
+void *
+window_get_user_data(struct window *w)
+{
+	return w->user_data;
+}
+
+void
+window_set_key_callback(struct window *w, window_key_cb_t callback)
+{
+	w->key_cb = callback;
 }
 
 static void
@@ -173,12 +202,30 @@ display_create_window(struct display *display)
 						   window->surface);
 	}
 
+	wl_list_insert(&display->window_list, &window->link);
+
 	return window;
+}
+
+static struct window *
+display_find_window_by_surface(struct display *display,
+			       struct wl_surface *surface)
+{
+	struct window *window;
+
+	wl_list_for_each(window, &display->window_list, link) {
+		if (window->surface == surface)
+			return window;
+	}
+
+	return NULL;
 }
 
 void
 window_destroy(struct window *window)
 {
+	wl_list_remove(&window->link);
+
 	if (window->xdg_toplevel)
 		zxdg_toplevel_v6_destroy(window->xdg_toplevel);
 	if (window->xdg_surface)
@@ -351,6 +398,100 @@ static const struct zxdg_shell_v6_listener xdg_shell_listener = {
 };
 
 static void
+keyboard_handle_keymap(void *data, struct wl_keyboard *keyboard,
+		       uint32_t format, int fd, uint32_t size)
+{
+}
+
+static void
+keyboard_handle_enter(void *data, struct wl_keyboard *keyboard,
+		      uint32_t serial, struct wl_surface *surface,
+		      struct wl_array *keys)
+{
+	struct display *display = data;
+	struct window *window;
+
+	window = display_find_window_by_surface(display, surface);
+
+	display->keyboard_focus = window;
+}
+
+static void
+keyboard_handle_leave(void *data, struct wl_keyboard *keyboard,
+		      uint32_t serial, struct wl_surface *surface)
+{
+	struct display *display = data;
+
+	display->keyboard_focus = NULL;
+}
+
+static void
+keyboard_handle_key(void *data, struct wl_keyboard *keyboard,
+		    uint32_t serial, uint32_t time, uint32_t key,
+		    uint32_t state)
+{
+	struct display *display = data;
+	struct window *window = display->keyboard_focus;
+
+	if (!window || !window->key_cb)
+		return;
+
+	window->key_cb(window, time, key, state);
+}
+
+static void
+keyboard_handle_modifiers(void *data, struct wl_keyboard *keyboard,
+			  uint32_t serial, uint32_t mods_depressed,
+			  uint32_t mods_latched, uint32_t mods_locked,
+			  uint32_t group)
+{
+}
+
+static void
+keyboard_handle_repeat_info(void *data, struct wl_keyboard *keyboard,
+			    int32_t rate, int32_t delay)
+{
+}
+
+static const struct wl_keyboard_listener keyboard_listener = {
+	keyboard_handle_keymap,
+	keyboard_handle_enter,
+	keyboard_handle_leave,
+	keyboard_handle_key,
+	keyboard_handle_modifiers,
+	keyboard_handle_repeat_info
+};
+
+static void
+seat_handle_capabilities(void *data, struct wl_seat *seat,
+			 enum wl_seat_capability caps)
+{
+	struct display *d = data;
+
+	if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !d->keyboard) {
+		d->keyboard = wl_seat_get_keyboard(seat);
+		wl_keyboard_add_listener(d->keyboard, &keyboard_listener, d);
+
+	} else if (!(caps & WL_SEAT_CAPABILITY_KEYBOARD) && d->keyboard) {
+		if (d->seat_version >= WL_KEYBOARD_RELEASE_SINCE_VERSION)
+			wl_keyboard_release(d->keyboard);
+		else
+			wl_keyboard_destroy(d->keyboard);
+		d->keyboard = NULL;
+	}
+}
+
+static void
+seat_handle_name(void *data, struct wl_seat *seat, const char *name)
+{
+}
+
+static const struct wl_seat_listener seat_listener = {
+	seat_handle_capabilities,
+	seat_handle_name,
+};
+
+static void
 registry_handle_global(void *data, struct wl_registry *registry,
                        uint32_t id, const char *interface, uint32_t version)
 {
@@ -374,6 +515,11 @@ registry_handle_global(void *data, struct wl_registry *registry,
 		                             &zwp_linux_dmabuf_v1_interface, 1);
 		zwp_linux_dmabuf_v1_add_listener(d->dmabuf, &dmabuf_listener,
 		                                 d);
+	} else if (!strcmp(interface, "wl_seat") && !d->seat) {
+		d->seat_version = MIN(version, 5);
+		d->seat = wl_registry_bind(registry, id, &wl_seat_interface,
+					   d->seat_version);
+		wl_seat_add_listener(d->seat, &seat_listener, d);
 	}
 }
 
@@ -430,6 +576,8 @@ display_create(void)
 		err("missing wayland globals");
 		goto fail;
 	}
+
+	wl_list_init(&display->window_list);
 
 	display->running = 1;
 
