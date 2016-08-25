@@ -417,7 +417,8 @@ setup_signal(struct instance *i)
 void main_loop(struct instance *i)
 {
 	struct video *vid = &i->video;
-	struct pollfd pfd[2];
+	struct wl_display *wl_display;
+	struct pollfd pfd[3];
 	short revents;
 	int nfds;
 	int ret;
@@ -427,7 +428,11 @@ void main_loop(struct instance *i)
 	pfd[0].fd = vid->fd;
 	pfd[0].events = POLLIN | POLLRDNORM | POLLOUT | POLLWRNORM | POLLPRI;
 
-	nfds = 1;
+	wl_display = display_get_wl_display(i->display);
+	pfd[1].fd = wl_display_get_fd(wl_display);
+	pfd[1].events = POLLIN;
+
+	nfds = 2;
 
 	if (i->sigfd != -1) {
 		pfd[nfds].fd = i->sigfd;
@@ -436,9 +441,36 @@ void main_loop(struct instance *i)
 	}
 
 	while (!i->finish && display_is_running(i->display)) {
+
+		while (wl_display_prepare_read(wl_display) != 0)
+			wl_display_dispatch_pending(wl_display);
+
 		ret = poll(pfd, nfds, -1);
 		if (ret <= 0) {
 			err("poll error");
+			break;
+		}
+
+		ret = wl_display_flush(wl_display);
+		if (ret < 0) {
+			if (errno == EAGAIN)
+				pfd[1].events |= POLLOUT;
+			else if (errno != EPIPE) {
+				err("wl_display_flush: %m");
+				wl_display_cancel_read(wl_display);
+				break;
+			}
+		}
+
+		ret = wl_display_read_events(wl_display);
+		if (ret < 0) {
+			err("wl_display_read_events: %m");
+			break;
+		}
+
+		ret = wl_display_dispatch_pending(wl_display);
+		if (ret < 0) {
+			err("wl_display_dispatch_pending: %m");
 			break;
 		}
 
@@ -457,6 +489,10 @@ void main_loop(struct instance *i)
 					handle_video_event(i);
 				break;
 			case 1:
+				if (revents & POLLOUT)
+					pfd[1].events &= ~POLLOUT;
+				break;
+			case 2:
 				handle_signal(i);
 				break;
 			}

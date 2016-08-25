@@ -125,15 +125,12 @@ xdg_surface_handle_configure(void *data, struct zxdg_surface_v6 *xdg_surface,
 			     uint32_t serial)
 {
 	struct window *w = data;
-	struct display *d = w->display;
 
 	zxdg_surface_v6_ack_configure(xdg_surface, serial);
 
 	w->configured = true;
 	if (window_recenter(w))
 		window_commit(w);
-
-	wl_display_flush(d->display);
 }
 
 static const struct zxdg_surface_v6_listener xdg_surface_listener = {
@@ -293,10 +290,22 @@ window_create_buffer(struct window *window, int index, int fd, int offset,
 	return fb;
 }
 
+static void handle_sync_event(void *data, struct wl_callback *callback,
+			      uint32_t serial)
+{
+	wl_callback_destroy(callback);
+}
+
+static const struct wl_callback_listener sync_listener = {
+	handle_sync_event
+};
+
 void
 window_show_buffer(struct window *window, struct fb *fb,
 		   fb_release_cb_t release_cb, void *cb_data)
 {
+	struct wl_callback *callback;
+
 	fb->release_cb = release_cb;
 	fb->cb_data = cb_data;
 
@@ -312,7 +321,8 @@ window_show_buffer(struct window *window, struct fb *fb,
 		window_commit(window);
 	}
 
-	wl_display_roundtrip(window->display->display);
+	callback = wl_display_sync(window->display->display);
+	wl_callback_add_listener(callback, &sync_listener, NULL);
 }
 
 static void
@@ -434,4 +444,10 @@ int
 display_is_running(struct display *display)
 {
 	return display->running;
+}
+
+struct wl_display *
+display_get_wl_display(struct display *display)
+{
+	return display->display;
 }

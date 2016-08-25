@@ -23,6 +23,8 @@ struct fb {
 	void *cb_data;
 };
 
+struct wl_display *display_get_wl_display(struct display *display);
+
 struct display *display_create(void);
 int display_is_running(struct display *display);
 struct window *display_create_window(struct display *display);
