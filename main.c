@@ -94,9 +94,32 @@ static int handle_video_event(struct instance *i)
 	}
 
 	switch (event.type) {
-	case V4L2_EVENT_MSM_VIDC_PORT_SETTINGS_CHANGED_INSUFFICIENT:
-		dbg("Port Reconfig received insufficient");
+	case V4L2_EVENT_MSM_VIDC_PORT_SETTINGS_CHANGED_INSUFFICIENT: {
+		unsigned int *ptr = (unsigned int *)event.u.data;
+		unsigned int height = ptr[0];
+		unsigned int width = ptr[1];
+
+		info("Port Reconfig received insufficient, new size %ux%u",
+		     width, height);
+
+		if (ptr[2] & V4L2_EVENT_BITDEPTH_FLAG) {
+			enum msm_vidc_pixel_depth depth = ptr[3];
+			info("  bit depth changed to %s",
+			     depth == MSM_VIDC_BIT_DEPTH_10 ? "10bits" :
+			     depth == MSM_VIDC_BIT_DEPTH_8 ? "8bits" :
+			     "??");
+		}
+
+		if (ptr[2] & V4L2_EVENT_PICSTRUCT_FLAG) {
+			unsigned int pic_struct = ptr[4];
+			info("  interlacing changed to %s",
+			     pic_struct == MSM_VIDC_PIC_STRUCT_PROGRESSIVE ?
+			     "progressive" :
+			     pic_struct == MSM_VIDC_PIC_STRUCT_MAYBE_INTERLACED ?
+			     "interlaced" : "??");
+		}
 		break;
+	}
 	case V4L2_EVENT_MSM_VIDC_PORT_SETTINGS_CHANGED_SUFFICIENT:
 		dbg("Setting changed sufficient");
 		break;
