@@ -31,6 +31,9 @@ int video_open(struct instance *i, char *name);
 /* Close the video decoder devices */
 void video_close(struct instance *i);
 
+/* Subscribe to an event on the video device */
+int video_subscribe_event(struct instance *i, int event_type);
+
 /* Setup the OUTPUT queue. The size determines the size for the stream
  * buffer. This is the maximum size a single compressed frame can have.
  * The count is the number of the stream buffers to allocate. */
@@ -57,6 +60,9 @@ int video_stream(struct instance *i, enum v4l2_buf_type type, int status);
 int video_dequeue_output(struct instance *i, int *n);
 int video_dequeue_capture(struct instance *i, int *n, int *finished,
 			  unsigned int *bytesused, struct timeval *ts);
+
+/* Dequeue a pending event */
+int video_dequeue_event(struct instance *i, struct v4l2_event *ev);
 
 int video_set_control(struct instance *i);
 

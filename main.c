@@ -64,36 +64,26 @@ static const int event_type[] = {
 	V4L2_EVENT_MSM_VIDC_HW_UNSUPPORTED,
 };
 
-static int subscribe_for_events(int fd)
+int subscribe_events(struct instance *i)
 {
-	int size_event = sizeof(event_type) / sizeof(event_type[0]);
-	struct v4l2_event_subscription sub;
-	int i, ret;
+	const int n_events = sizeof(event_type) / sizeof(event_type[0]);
+	int idx;
 
-	for (i = 0; i < size_event; i++) {
-		memset(&sub, 0, sizeof(sub));
-		sub.type = event_type[i];
-		ret = ioctl(fd, VIDIOC_SUBSCRIBE_EVENT, &sub);
-		if (ret < 0)
-			err("cannot subscribe for event type %d (%s)",
-				sub.type, strerror(errno));
+	for (idx = 0; idx < n_events; idx++) {
+		if (video_subscribe_event(i, event_type[idx]))
+			return -1;
 	}
 
 	return 0;
 }
 
-static int handle_video_event(struct instance *i)
+static int
+handle_video_event(struct instance *i)
 {
-	struct video *vid = &i->video;
 	struct v4l2_event event;
-	int ret;
 
-	memset(&event, 0, sizeof(event));
-	ret = ioctl(vid->fd, VIDIOC_DQEVENT, &event);
-	if (ret < 0) {
-		err("vidioc_dqevent failed (%s) %d", strerror(errno), -errno);
-		return -errno;
-	}
+	if (video_dequeue_event(i, &event))
+		return -1;
 
 	switch (event.type) {
 	case V4L2_EVENT_MSM_VIDC_PORT_SETTINGS_CHANGED_INSUFFICIENT: {
@@ -604,7 +594,7 @@ int main(int argc, char **argv)
 	if (ret)
 		goto err;
 
-	ret = subscribe_for_events(vid->fd);
+	ret = subscribe_events(&inst);
 	if (ret)
 		goto err;
 

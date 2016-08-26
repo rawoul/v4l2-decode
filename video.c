@@ -738,3 +738,32 @@ int video_setup_output(struct instance *i, unsigned long codec,
 
 	return 0;
 }
+
+int video_subscribe_event(struct instance *i, int event_type)
+{
+	struct v4l2_event_subscription sub;
+
+	memset(&sub, 0, sizeof(sub));
+	sub.type = event_type;
+
+	if (ioctl(i->video.fd, VIDIOC_SUBSCRIBE_EVENT, &sub) < 0) {
+		err("failed to subscribe to event type %u: %m", sub.type);
+		return -1;
+	}
+
+	return 0;
+}
+
+int video_dequeue_event(struct instance *i, struct v4l2_event *ev)
+{
+	struct video *vid = &i->video;
+
+	memset(ev, 0, sizeof (*ev));
+
+	if (ioctl(vid->fd, VIDIOC_DQEVENT, ev) < 0) {
+		err("failed to dequeue event: %m");
+		return -1;
+	}
+
+	return 0;
+}
