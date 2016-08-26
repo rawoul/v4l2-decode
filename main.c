@@ -78,6 +78,64 @@ int subscribe_events(struct instance *i)
 }
 
 static int
+reconfigure(struct instance *i)
+{
+	struct video *vid = &i->video;
+	int n;
+
+	/*
+	 * Destroy window buffers that are not in use by the
+	 * wayland compositor; buffers in use will be destroyed
+	 * when the release callback is called
+	 */
+	for (n = 0; n < vid->cap_buf_cnt; n++) {
+		struct fb *fb = i->disp_buffers[n];
+		if (fb && !fb->busy)
+			fb_destroy(fb);
+	}
+
+	/* Stop capture and release buffers */
+	if (video_stop_capture(i))
+		return -1;
+
+	/* Setup capture queue with new parameters */
+	if (video_setup_capture(i, 20, i->width, i->height))
+		return -1;
+
+	/* Queue all capture buffers */
+	for (n = 0; n < vid->cap_buf_cnt; n++) {
+		if (video_queue_buf_cap(i, n))
+			return -1;
+
+		vid->cap_buf_flag[n] = 1;
+	}
+
+	/* Start streaming */
+	if (video_stream(i, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE,
+			 VIDIOC_STREAMON))
+		return -1;
+
+	/*
+	 * Recreate the window frame buffers
+	 */
+	i->group++;
+
+	for (n = 0; n < vid->cap_buf_cnt; n++) {
+		i->disp_buffers[n] =
+			window_create_buffer(i->window, i->group, n,
+					     vid->cap_ion_fd,
+					     vid->cap_buf_off[n][0],
+					     vid->cap_buf_format,
+					     vid->cap_w, vid->cap_h,
+					     vid->cap_buf_stride[0]);
+		if (!i->disp_buffers[n])
+			return -1;
+	}
+
+	return 0;
+}
+
+static int
 handle_video_event(struct instance *i)
 {
 	struct v4l2_event event;
@@ -100,6 +158,10 @@ handle_video_event(struct instance *i)
 			     depth == MSM_VIDC_BIT_DEPTH_10 ? "10bits" :
 			     depth == MSM_VIDC_BIT_DEPTH_8 ? "8bits" :
 			     "??");
+
+			video_set_dpb(i, depth == MSM_VIDC_BIT_DEPTH_10 ?
+				      V4L2_MPEG_VIDC_VIDEO_DPB_COLOR_FMT_TP10_UBWC :
+				      V4L2_MPEG_VIDC_VIDEO_DPB_COLOR_FMT_NONE);
 		}
 
 		if (ptr[2] & V4L2_EVENT_PICSTRUCT_FLAG) {
@@ -110,6 +172,14 @@ handle_video_event(struct instance *i)
 			     pic_struct == MSM_VIDC_PIC_STRUCT_MAYBE_INTERLACED ?
 			     "interlaced" : "??");
 		}
+
+		i->width = width;
+		i->height = height;
+		i->reconfigure_pending = 1;
+
+		/* flush capture queue, we will reconfigure it when flush
+		 * done event is received */
+		video_flush(i, V4L2_DEC_QCOM_CMD_FLUSH_CAPTURE);
 		break;
 	}
 	case V4L2_EVENT_MSM_VIDC_PORT_SETTINGS_CHANGED_SUFFICIENT:
@@ -117,6 +187,11 @@ handle_video_event(struct instance *i)
 		break;
 	case V4L2_EVENT_MSM_VIDC_FLUSH_DONE:
 		dbg("Flush Done received");
+		if (i->reconfigure_pending) {
+			dbg("Reconfiguring output");
+			reconfigure(i);
+			i->reconfigure_pending = 0;
+		}
 		break;
 	case V4L2_EVENT_MSM_VIDC_SYS_ERROR:
 		dbg("SYS Error received");
@@ -297,11 +372,16 @@ static void
 buffer_released(struct fb *fb, void *data)
 {
 	struct instance *i = data;
+	struct video *vid = &i->video;
 	int n = fb->index;
 
-	int ret = video_queue_buf_cap(i, n);
-	if (!ret)
-		i->video.cap_buf_flag[n] = 1;
+	if (fb->group != i->group) {
+		fb_destroy(fb);
+		return;
+	}
+
+	if (video_queue_buf_cap(i, n) == 0)
+		vid->cap_buf_flag[n] = 1;
 }
 
 static int
@@ -551,7 +631,8 @@ setup_display(struct instance *i)
 
 	for (n = 0; n < vid->cap_buf_cnt; n++) {
 		i->disp_buffers[n] =
-			window_create_buffer(i->window, n, vid->cap_ion_fd,
+			window_create_buffer(i->window, i->group,
+					     n, vid->cap_ion_fd,
 					     vid->cap_buf_off[n][0],
 					     vid->cap_buf_format,
 					     vid->cap_w, vid->cap_h,

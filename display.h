@@ -15,12 +15,14 @@ typedef void (*window_key_cb_t)(struct window *w, uint32_t time, uint32_t key,
 
 struct fb {
 	struct window *window;
+	int group;
 	int index;
 	int fd;
 	int offset;
 	int width;
 	int height;
 	int stride;
+	int busy;
 	uint32_t format;
 	struct wl_buffer *buffer;
 	fb_release_cb_t release_cb;
@@ -41,7 +43,8 @@ void window_toggle_fullscreen(struct window *w);
 
 void window_show_buffer(struct window *window, struct fb *fb,
 			fb_release_cb_t release_cb, void *cb_data);
-struct fb *window_create_buffer(struct window *window, int index, int fd,
+struct fb *window_create_buffer(struct window *window, int group,
+				int index, int fd,
 				int offset, uint32_t format,
 				int width, int height, int stride);
 void window_destroy(struct window *window);

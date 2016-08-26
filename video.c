@@ -248,6 +248,33 @@ int video_set_control(struct instance *i)
 	return 0;
 }
 
+int video_set_dpb(struct instance *i,
+		  enum v4l2_mpeg_vidc_video_dpb_color_format format)
+{
+	struct v4l2_ext_control control[2] = {0};
+	struct v4l2_ext_controls controls = {0};
+
+	control[0].id = V4L2_CID_MPEG_VIDC_VIDEO_STREAM_OUTPUT_MODE;
+	control[0].value =
+		(format == V4L2_MPEG_VIDC_VIDEO_DPB_COLOR_FMT_TP10_UBWC) ?
+		V4L2_CID_MPEG_VIDC_VIDEO_STREAM_OUTPUT_SECONDARY :
+		V4L2_CID_MPEG_VIDC_VIDEO_STREAM_OUTPUT_PRIMARY;
+
+	control[1].id = V4L2_CID_MPEG_VIDC_VIDEO_DPB_COLOR_FORMAT;
+	control[1].value = format;
+
+	controls.count = 2;
+	controls.ctrl_class = V4L2_CTRL_CLASS_MPEG;
+	controls.controls = control;
+
+	if (ioctl(i->video.fd, VIDIOC_S_EXT_CTRLS, &controls) < 0) {
+		err("failed to set dpb format: %m");
+		return -1;
+	}
+
+	return 0;
+}
+
 int video_queue_buf_out(struct instance *i, int n, int length)
 {
 	struct video *vid = &i->video;
@@ -420,6 +447,22 @@ int video_stream(struct instance *i, enum v4l2_buf_type type, int status)
 
 	dbg("Stream %s on %s queue", dbg_status[status==VIDIOC_STREAMOFF],
 	    dbg_type[type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE]);
+
+	return 0;
+}
+
+int video_flush(struct instance *i, uint32_t flags)
+{
+	struct video *vid = &i->video;
+	struct v4l2_decoder_cmd dec;
+
+	memzero(dec);
+	dec.flags = flags;
+	dec.cmd = V4L2_DEC_QCOM_CMD_FLUSH;
+	if (ioctl(vid->fd, VIDIOC_DECODER_CMD, &dec) < 0) {
+		err("failed to flush: %m");
+		return -1;
+	}
 
 	return 0;
 }

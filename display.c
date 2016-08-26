@@ -95,6 +95,8 @@ window_commit(struct window *w)
 		wl_surface_damage(w->surface, 0, 0, w->width, w->height);
 
 	wl_surface_commit(w->surface);
+
+	fb->busy = 1;
 }
 
 static int
@@ -280,6 +282,8 @@ buffer_release(void *data, struct wl_buffer *buffer)
 {
 	struct fb *fb = data;
 
+	fb->busy = 0;
+
 	if (fb->release_cb)
 		fb->release_cb(fb, fb->cb_data);
 }
@@ -334,7 +338,8 @@ format_is_supported(struct display *display, uint32_t format)
 }
 
 struct fb *
-window_create_buffer(struct window *window, int index, int fd, int offset,
+window_create_buffer(struct window *window, int group,
+		     int index, int fd, int offset,
 		     uint32_t format, int width, int height, int stride)
 {
 	struct zwp_linux_buffer_params_v1 *params;
@@ -348,6 +353,7 @@ window_create_buffer(struct window *window, int index, int fd, int offset,
 #endif
 
 	fb = calloc(1, sizeof *fb);
+	fb->group = group;
 	fb->index = index;
 	fb->fd = fd;
 	fb->offset = offset;

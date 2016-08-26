@@ -172,6 +172,9 @@ struct instance {
 	int finish;  /* Flag set when decoding has been completed and all
 			threads finish */
 
+	int reconfigure_pending;
+	int group;
+
 	struct display *display;
 	struct window *window;
 	struct fb *disp_buffers[MAX_CAP_BUF];

@@ -61,6 +61,9 @@ int video_queue_buf_cap(struct instance *i, int n);
 /* Control MFC streaming */
 int video_stream(struct instance *i, enum v4l2_buf_type type, int status);
 
+/* Flush a queue */
+int video_flush(struct instance *i, uint32_t flags);
+
 /* Dequeue a buffer, the structure *buf is used to return the parameters of the
  * dequeued buffer. */
 int video_dequeue_output(struct instance *i, int *n);
@@ -71,6 +74,8 @@ int video_dequeue_capture(struct instance *i, int *n, int *finished,
 int video_dequeue_event(struct instance *i, struct v4l2_event *ev);
 
 int video_set_control(struct instance *i);
+int video_set_dpb(struct instance *i,
+		  enum v4l2_mpeg_vidc_video_dpb_color_format format);
 
 #endif /* INCLUDE_VIDEO_H */
 
