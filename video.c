@@ -393,8 +393,7 @@ int video_dequeue_capture(struct instance *i, int *n, int *finished,
 
 	*finished = 0;
 
-	if (buf.flags & V4L2_QCOM_BUF_FLAG_EOS ||
-	    buf.m.planes[0].bytesused == 0)
+	if (buf.flags & V4L2_QCOM_BUF_FLAG_EOS)
 		*finished = 1;
 
 	*bytesused = buf.m.planes[0].bytesused;

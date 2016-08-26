@@ -343,6 +343,7 @@ handle_video_capture(struct instance *i)
 			   buffer_released, i);
 
 	if (finished) {
+		info("End of stream");
 		i->finish = 1;
 		pthread_cond_signal(&i->cond);
 	}
