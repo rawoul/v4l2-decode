@@ -55,14 +55,13 @@
  * used and still enable video device to decode with the hardware. */
 #define RESULT_EXTRA_BUFFER_CNT 2
 
-#define V4L2_EVENT_MSM_VIDC_CLOSE_DONE      (V4L2_EVENT_MSM_VIDC_START + 4)
-
 static const int event_type[] = {
 	V4L2_EVENT_MSM_VIDC_FLUSH_DONE,
 	V4L2_EVENT_MSM_VIDC_PORT_SETTINGS_CHANGED_SUFFICIENT,
 	V4L2_EVENT_MSM_VIDC_PORT_SETTINGS_CHANGED_INSUFFICIENT,
-	V4L2_EVENT_MSM_VIDC_CLOSE_DONE,
-	V4L2_EVENT_MSM_VIDC_SYS_ERROR
+	V4L2_EVENT_MSM_VIDC_SYS_ERROR,
+	V4L2_EVENT_MSM_VIDC_HW_OVERLOAD,
+	V4L2_EVENT_MSM_VIDC_HW_UNSUPPORTED,
 };
 
 static int subscribe_for_events(int fd)
@@ -129,11 +128,14 @@ static int handle_video_event(struct instance *i)
 	case V4L2_EVENT_MSM_VIDC_FLUSH_DONE:
 		dbg("Flush Done received");
 		break;
-	case V4L2_EVENT_MSM_VIDC_CLOSE_DONE:
-		dbg("Close Done received");
-		break;
 	case V4L2_EVENT_MSM_VIDC_SYS_ERROR:
 		dbg("SYS Error received");
+		break;
+	case V4L2_EVENT_MSM_VIDC_HW_OVERLOAD:
+		dbg("HW Overload received");
+		break;
+	case V4L2_EVENT_MSM_VIDC_HW_UNSUPPORTED:
+		dbg("HW Unsupported received");
 		break;
 	default:
 		dbg("unknown event type occurred %x", event.type);
