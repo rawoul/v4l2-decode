@@ -424,58 +424,6 @@ int video_stream(struct instance *i, enum v4l2_buf_type type, int status)
 	return 0;
 }
 
-int video_stop(struct instance *i)
-{
-	struct video *vid = &i->video;
-	struct v4l2_requestbuffers reqbuf;
-	struct v4l2_decoder_cmd dec;
-	int ret;
-
-	memzero(dec);
-	dec.flags = V4L2_DEC_QCOM_CMD_FLUSH_CAPTURE |
-		V4L2_DEC_QCOM_CMD_FLUSH_OUTPUT;
-	dec.cmd = V4L2_DEC_QCOM_CMD_FLUSH;
-	ret = ioctl(vid->fd, VIDIOC_DECODER_CMD, &dec);
-	if (ret < 0) {
-		err("DECODER_CMD failed (%s)", strerror(errno));
-		return -1;
-	}
-
-	ret = video_stream(i, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE,
-			   VIDIOC_STREAMOFF);
-	if (ret < 0)
-		err("STREAMOFF CAPTURE queue failed (%s)", strerror(errno));
-
-	ret = video_stream(i, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE,
-			   VIDIOC_STREAMOFF);
-	if (ret < 0)
-		err("STREAMOFF OUTPUT queue failed (%s)", strerror(errno));
-
-	memzero(reqbuf);
-	reqbuf.memory = V4L2_MEMORY_USERPTR;
-	reqbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-
-	ret = ioctl(vid->fd, VIDIOC_REQBUFS, &reqbuf);
-	if (ret < 0) {
-		err("REQBUFS with count=0 on CAPTURE queue failed (%s)",
-		    strerror(errno));
-		return -1;
-	}
-
-	memzero(reqbuf);
-	reqbuf.memory = V4L2_MEMORY_USERPTR;
-	reqbuf.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
-
-	ret = ioctl(vid->fd, VIDIOC_REQBUFS, &reqbuf);
-	if (ret < 0) {
-		err("REQBUFS with count=0 on OUTPUT queue failed (%s)",
-		    strerror(errno));
-		return -1;
-	}
-
-	return 0;
-}
-
 static int
 alloc_ion_buffer(struct instance *i, size_t size)
 {
@@ -654,6 +602,42 @@ int video_setup_capture(struct instance *i, int extra_buf, int w, int h)
 	return 0;
 }
 
+int video_stop_capture(struct instance *i)
+{
+	struct video *vid = &i->video;
+	struct v4l2_requestbuffers reqbuf;
+
+	if (video_stream(i, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE,
+			 VIDIOC_STREAMOFF))
+		return -1;
+
+	if (vid->cap_ion_addr) {
+		if (munmap(vid->cap_ion_addr,
+			   vid->cap_buf_cnt * vid->cap_buf_size[0]))
+			err("failed to unmap buffer: %m");
+	}
+
+	if (vid->cap_ion_fd >= 0) {
+		if (close(vid->cap_ion_fd) < 0)
+			err("failed to close ion buffer: %m");
+	}
+
+	vid->cap_ion_fd = -1;
+	vid->cap_ion_addr = NULL;
+	vid->cap_buf_cnt = 0;
+
+	memzero(reqbuf);
+	reqbuf.memory = V4L2_MEMORY_USERPTR;
+	reqbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+
+	if (ioctl(vid->fd, VIDIOC_REQBUFS, &reqbuf) < 0) {
+		err("REQBUFS with count=0 on CAPTURE queue failed: %m");
+		return -1;
+	}
+
+	return 0;
+}
+
 static int video_set_framerate(struct instance *i, int num, int den)
 {
 	struct v4l2_streamparm parm;
@@ -735,6 +719,42 @@ int video_setup_output(struct instance *i, unsigned long codec,
 	dbg("Succesfully mmapped %d OUTPUT buffers", n);
 
 	video_set_framerate(i, 25, 1);
+
+	return 0;
+}
+
+int video_stop_output(struct instance *i)
+{
+	struct video *vid = &i->video;
+	struct v4l2_requestbuffers reqbuf;
+
+	if (video_stream(i, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE,
+			 VIDIOC_STREAMOFF))
+		return -1;
+
+	if (vid->out_ion_addr) {
+		if (munmap(vid->out_ion_addr,
+			   vid->out_buf_cnt * vid->out_buf_size))
+			err("failed to unmap buffer: %m");
+	}
+
+	if (vid->out_ion_fd >= 0) {
+		if (close(vid->out_ion_fd) < 0)
+			err("failed to close ion buffer: %m");
+	}
+
+	vid->out_ion_fd = -1;
+	vid->out_ion_addr = NULL;
+	vid->out_buf_cnt = 0;
+
+	memzero(reqbuf);
+	reqbuf.memory = V4L2_MEMORY_USERPTR;
+	reqbuf.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+
+	if (ioctl(vid->fd, VIDIOC_REQBUFS, &reqbuf) < 0) {
+		err("REQBUFS with count=0 on OUTPUT queue failed: %m");
+		return -1;
+	}
 
 	return 0;
 }

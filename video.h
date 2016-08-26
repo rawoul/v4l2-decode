@@ -46,6 +46,12 @@ int video_setup_output(struct instance *i, unsigned long codec,
  * structure. */
 int video_setup_capture(struct instance *i, int extra_buf, int w, int h);
 
+/* Stop OUTPUT queue and release buffers */
+int video_stop_output(struct instance *i);
+
+/* Stop CAPTURE queue and release buffers */
+int video_stop_capture(struct instance *i);
+
 /* Queue OUTPUT buffer */
 int video_queue_buf_out(struct instance *i, int n, int length);
 
@@ -65,8 +71,6 @@ int video_dequeue_capture(struct instance *i, int *n, int *finished,
 int video_dequeue_event(struct instance *i, struct v4l2_event *ev);
 
 int video_set_control(struct instance *i);
-
-int video_stop(struct instance *i);
 
 #endif /* INCLUDE_VIDEO_H */
 
