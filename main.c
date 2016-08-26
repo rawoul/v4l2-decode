@@ -31,7 +31,6 @@
 #include <signal.h>
 #include <poll.h>
 #include <pthread.h>
-#include <semaphore.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -46,14 +45,6 @@
 /* This is the size of the buffer for the compressed stream.
  * It limits the maximum compressed frame size. */
 #define STREAM_BUUFER_SIZE	(1024 * 1024)
-
-/* The number of compress4ed stream buffers */
-#define STREAM_BUFFER_CNT	2
-
-/* The number of extra buffers for the decoded output.
- * This is the number of buffers that the application can keep
- * used and still enable video device to decode with the hardware. */
-#define RESULT_EXTRA_BUFFER_CNT 2
 
 static const int event_type[] = {
 	V4L2_EVENT_MSM_VIDC_FLUSH_DONE,
@@ -256,8 +247,6 @@ int extract_and_process_header(struct instance *i)
 	if (ret)
 		return -1;
 
-	dbg("queued output buffer %d", 0);
-
 	i->video.out_buf_flag[0] = 1;
 
 	ret = video_stream(i, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE,
@@ -356,8 +345,6 @@ void *parser_thread_func(void *args)
 		vid->out_buf_flag[n] = 1;
 		pthread_mutex_unlock(&i->lock);
 
-		dbg("queued output buffer %d", n);
-
 		i->in.offs += used;
 	}
 
@@ -434,8 +421,6 @@ handle_video_output(struct instance *i)
 		err("dequeue output buffer fail");
 		return ret;
 	}
-
-	dbg("dequeued output buffer %d", n);
 
 	pthread_mutex_lock(&i->lock);
 	vid->out_buf_flag[n] = 0;
@@ -706,8 +691,7 @@ int main(int argc, char **argv)
 
 	/* queue all capture buffers */
 	for (n = 0; n < vid->cap_buf_cnt; n++) {
-		ret = video_queue_buf_cap(&inst, n);
-		if (ret)
+		if (video_queue_buf_cap(&inst, n))
 			goto err;
 		vid->cap_buf_flag[n] = 1;
 	}

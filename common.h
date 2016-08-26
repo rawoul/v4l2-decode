@@ -25,11 +25,11 @@
 #define INCLUDE_COMMON_H
 
 #include <stdio.h>
-#include <semaphore.h>
+#include <stdint.h>
+#include <pthread.h>
 
 #include "parser.h"
 #include "display.h"
-#include "queue.h"
 
 /* When ADD_DETAILS is defined every debug and error message contains
  * information about the file, function and line of code where it has
@@ -84,9 +84,6 @@
 /* Maximum number of planes used in the application */
 #define MAX_PLANES		CAP_PLANES
 
-/* The buffer is free to use by video decoder */
-#define BUF_FREE		0
-
 /* Input file related parameters */
 struct input {
 	char *name;
@@ -113,10 +110,6 @@ struct video {
 	/* Capture queue related */
 	int cap_w;
 	int cap_h;
-	int cap_crop_w;
-	int cap_crop_h;
-	int cap_crop_left;
-	int cap_crop_top;
 	int cap_buf_cnt;
 	int cap_buf_cnt_min;
 	uint32_t cap_buf_format;
@@ -125,7 +118,6 @@ struct video {
 	int cap_buf_off[MAX_CAP_BUF][CAP_PLANES];
 	char *cap_buf_addr[MAX_CAP_BUF][CAP_PLANES];
 	int cap_buf_flag[MAX_CAP_BUF];
-	int cap_buf_queued;
 	int cap_ion_fd;
 	void *cap_ion_addr;
 
@@ -164,7 +156,6 @@ struct instance {
 
 	pthread_mutex_t lock;
 	pthread_cond_t cond;
-	struct queue queue;
 
 	/* Control */
 	int sigfd;

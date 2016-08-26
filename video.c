@@ -280,7 +280,6 @@ int video_queue_buf_out(struct instance *i, int n, int length)
 	struct video *vid = &i->video;
 	struct v4l2_buffer buf;
 	struct v4l2_plane planes[1];
-	int ret;
 
 	if (n >= vid->out_buf_cnt) {
 		err("Tried to queue a non existing buffer");
@@ -305,8 +304,7 @@ int video_queue_buf_out(struct instance *i, int n, int length)
 	if (length == 0)
 		buf.flags |= V4L2_QCOM_BUF_FLAG_EOS;
 
-	ret = ioctl(vid->fd, VIDIOC_QBUF, &buf);
-	if (ret) {
+	if (ioctl(vid->fd, VIDIOC_QBUF, &buf) < 0) {
 		err("Failed to queue buffer (index=%d) on OUTPUT: %m",
 		    buf.index);
 		return -1;
@@ -322,7 +320,6 @@ int video_queue_buf_cap(struct instance *i, int n)
 	struct video *vid = &i->video;
 	struct v4l2_buffer buf;
 	struct v4l2_plane planes[2];
-	int ret;
 
 	if (n >= vid->cap_buf_cnt) {
 		err("Tried to queue a non existing buffer");
@@ -351,8 +348,7 @@ int video_queue_buf_cap(struct instance *i, int n)
 	buf.m.planes[1].bytesused = 0;
 	buf.m.planes[1].data_offset = 0;
 
-	ret = ioctl(vid->fd, VIDIOC_QBUF, &buf);
-	if (ret) {
+	if (ioctl(vid->fd, VIDIOC_QBUF, &buf) < 0) {
 		err("Failed to queue buffer (index=%d) on CAPTURE: %m",
 		    buf.index);
 		return -1;
@@ -560,8 +556,6 @@ int video_setup_capture(struct instance *i, int extra_buf, int w, int h)
 	}
 
 	vid->cap_buf_cnt = 4 + extra_buf;
-	vid->cap_buf_cnt_min = 4;
-	vid->cap_buf_queued = 0;
 
 	memzero(reqbuf);
 	reqbuf.count = vid->cap_buf_cnt;
@@ -569,7 +563,7 @@ int video_setup_capture(struct instance *i, int extra_buf, int w, int h)
 	reqbuf.memory = V4L2_MEMORY_USERPTR;
 
 	if (ioctl(vid->fd, VIDIOC_REQBUFS, &reqbuf) < 0) {
-		err("REQBUFS failed on CAPTURE queue (%s)", strerror(errno));
+		err("REQBUFS failed on CAPTURE queue: %m");
 		return -1;
 	}
 
