@@ -226,14 +226,26 @@ void video_close(struct instance *i)
 int video_set_control(struct instance *i)
 {
 	struct v4l2_control control = {0};
-	int ret;
+
+	if (i->decode_order) {
+		control.id = V4L2_CID_MPEG_VIDC_VIDEO_OUTPUT_ORDER;
+		control.value = V4L2_MPEG_VIDC_VIDEO_OUTPUT_ORDER_DECODE;
+
+		if (ioctl(i->video.fd, VIDIOC_S_CTRL, &control) < 0) {
+			err("failed to set output order: %m");
+			return -1;
+		}
+	}
 
 	control.id = V4L2_CID_MPEG_VIDC_VIDEO_CONTINUE_DATA_TRANSFER;
 	control.value = 1;
 
-	ret = ioctl(i->video.fd, VIDIOC_S_CTRL, &control);
+	if (ioctl(i->video.fd, VIDIOC_S_CTRL, &control) < 0) {
+		err("failed to set data transfer mode: %m");
+		return -1;
+	}
 
-	return ret;
+	return 0;
 }
 
 int video_queue_buf_out(struct instance *i, int n, int length)

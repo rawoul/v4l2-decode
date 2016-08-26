@@ -42,6 +42,7 @@ void print_usage(char *name)
 	printf("\t-w video width\n");
 	printf("\t-h video height\n");
 	printf("\t-f save frames on disk\n");
+	printf("\t-d output frames in decode order\n");
 
 	printf("\n");
 }
@@ -77,7 +78,7 @@ int parse_args(struct instance *i, int argc, char **argv)
 
 	init_to_defaults(i);
 
-	while ((c = getopt(argc, argv, "w:h:c:d:i:m:f:")) != -1) {
+	while ((c = getopt(argc, argv, "w:h:c:di:m:f:")) != -1) {
 		switch (c) {
 		case 'c':
 			i->parser.codec = get_codec(optarg);
@@ -97,6 +98,9 @@ int parse_args(struct instance *i, int argc, char **argv)
 		case 'f':
 			i->save_frames = 1;
 			i->save_path = optarg;
+			break;
+		case 'd':
+			i->decode_order = 1;
 			break;
 		default:
 			err("Bad argument");

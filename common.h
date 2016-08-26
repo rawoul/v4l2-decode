@@ -150,6 +150,7 @@ struct instance {
 	int width;
 	int height;
 	int save_frames;
+	int decode_order;
 	char *save_path;
 
 	/* Input file related parameters */
