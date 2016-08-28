@@ -90,7 +90,7 @@ restart_capture(struct instance *i)
 		return -1;
 
 	/* Setup capture queue with new parameters */
-	if (video_setup_capture(i, 20, i->width, i->height))
+	if (video_setup_capture(i, 4, i->width, i->height))
 		return -1;
 
 	/* Queue all capture buffers */

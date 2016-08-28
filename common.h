@@ -111,7 +111,6 @@ struct video {
 	int cap_w;
 	int cap_h;
 	int cap_buf_cnt;
-	int cap_buf_cnt_min;
 	uint32_t cap_buf_format;
 	int cap_buf_size[CAP_PLANES];
 	int cap_buf_stride[CAP_PLANES];
