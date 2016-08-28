@@ -275,7 +275,8 @@ int video_set_dpb(struct instance *i,
 	return 0;
 }
 
-int video_queue_buf_out(struct instance *i, int n, int length)
+int video_queue_buf_out(struct instance *i, int n, int length,
+			uint32_t flags, struct timeval timestamp)
 {
 	struct video *vid = &i->video;
 	struct v4l2_buffer buf;
@@ -301,8 +302,8 @@ int video_queue_buf_out(struct instance *i, int n, int length)
 	buf.m.planes[0].bytesused = length;
 	buf.m.planes[0].data_offset = 0;
 
-	if (length == 0)
-		buf.flags |= V4L2_QCOM_BUF_FLAG_EOS;
+	buf.flags = flags;
+	buf.timestamp = timestamp;
 
 	if (ioctl(vid->fd, VIDIOC_QBUF, &buf) < 0) {
 		err("Failed to queue buffer (index=%d) on OUTPUT: %m",
@@ -310,7 +311,10 @@ int video_queue_buf_out(struct instance *i, int n, int length)
 		return -1;
 	}
 
-	dbg("Queued buffer on OUTPUT queue with index %d", buf.index);
+	dbg("Queued buffer on OUTPUT queue with index %d "
+	    "(flags:%08x, bytesused:%d, ts: %ld.%lu)",
+	    buf.index, buf.flags, buf.m.planes[0].bytesused,
+	    buf.timestamp.tv_sec, buf.timestamp.tv_usec);
 
 	return 0;
 }
@@ -371,9 +375,18 @@ static int video_dequeue_buf(struct instance *i, struct v4l2_buffer *buf)
 		return -errno;
 	}
 
-	dbg("Dequeued buffer on %s queue with index %d (flags:%x, bytesused:%d)",
-	    dbg_type[buf->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE],
-	    buf->index, buf->flags, buf->m.planes[0].bytesused);
+	switch (buf->type) {
+	case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
+		dbg("Dequeued buffer on OUTPUT queue with index %d",
+		    buf->index);
+		break;
+	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
+		dbg("Dequeued buffer on CAPTURE queue with index %d "
+		    "(flags:%08x, bytesused:%d, ts: %ld.%lu)",
+		    buf->index, buf->flags, buf->m.planes[0].bytesused,
+		    buf->timestamp.tv_sec, buf->timestamp.tv_usec);
+		break;
+	}
 
 	return 0;
 }
@@ -577,7 +590,7 @@ int video_setup_capture(struct instance *i, int extra_buf, int w, int h)
 		return -1;
 	}
 
-	dbg("  %dx%d fmt=%s (%d planes) field=%s cspace=%s flags=0x%x",
+	dbg("  %dx%d fmt=%s (%d planes) field=%s cspace=%s flags=%08x",
 	    fmt.fmt.pix_mp.width, fmt.fmt.pix_mp.height,
 	    fourcc_to_string(fmt.fmt.pix_mp.pixelformat),
 	    fmt.fmt.pix_mp.num_planes,

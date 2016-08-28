@@ -23,7 +23,10 @@
 #ifndef INCLUDE_VIDEO_H
 #define INCLUDE_VIDEO_H
 
-#include "common.h"
+#include <stdint.h>
+#include <linux/videodev2.h>
+
+struct instance;
 
 /* Open the video decoder device */
 int video_open(struct instance *i, char *name);
@@ -53,7 +56,8 @@ int video_stop_output(struct instance *i);
 int video_stop_capture(struct instance *i);
 
 /* Queue OUTPUT buffer */
-int video_queue_buf_out(struct instance *i, int n, int length);
+int video_queue_buf_out(struct instance *i, int n, int length,
+			uint32_t flags, struct timeval ts);
 
 /* Queue CAPTURE buffer */
 int video_queue_buf_cap(struct instance *i, int n);

@@ -217,6 +217,7 @@ void cleanup(struct instance *i)
 
 int extract_and_process_header(struct instance *i)
 {
+	struct timeval tv;
 	int used, fs;
 	int ret;
 
@@ -243,7 +244,10 @@ int extract_and_process_header(struct instance *i)
 
 	dbg("Extracted header of size %d", fs);
 
-	ret = video_queue_buf_out(i, 0, fs);
+	tv.tv_sec = 0;
+	tv.tv_usec = 0;
+
+	ret = video_queue_buf_out(i, 0, fs, 0, tv);
 	if (ret)
 		return -1;
 
@@ -305,6 +309,8 @@ void *parser_thread_func(void *args)
 {
 	struct instance *i = (struct instance *)args;
 	struct video *vid = &i->video;
+	struct timeval tv;
+	uint32_t flags;
 	int used, fs, n;
 	int ret;
 
@@ -339,7 +345,14 @@ void *parser_thread_func(void *args)
 
 		dbg("Extracted frame of size %d", fs);
 
-		ret = video_queue_buf_out(i, n, fs);
+		flags = V4L2_QCOM_BUF_TIMESTAMP_INVALID;
+		if (fs == 0)
+			flags |= V4L2_QCOM_BUF_FLAG_EOS;
+
+		tv.tv_sec = 0;
+		tv.tv_usec = 0;
+
+		ret = video_queue_buf_out(i, n, fs, flags, tv);
 
 		pthread_mutex_lock(&i->lock);
 		vid->out_buf_flag[n] = 1;
