@@ -69,7 +69,7 @@ int subscribe_events(struct instance *i)
 }
 
 static int
-reconfigure(struct instance *i)
+restart_capture(struct instance *i)
 {
 	struct video *vid = &i->video;
 	int n;
@@ -86,7 +86,7 @@ reconfigure(struct instance *i)
 	}
 
 	/* Stop capture and release buffers */
-	if (video_stop_capture(i))
+	if (vid->cap_buf_cnt > 0 && video_stop_capture(i))
 		return -1;
 
 	/* Setup capture queue with new parameters */
@@ -180,7 +180,7 @@ handle_video_event(struct instance *i)
 		dbg("Flush Done received");
 		if (i->reconfigure_pending) {
 			dbg("Reconfiguring output");
-			reconfigure(i);
+			restart_capture(i);
 			i->reconfigure_pending = 0;
 		}
 		break;
@@ -600,9 +600,6 @@ handle_window_key(struct window *window, uint32_t time, uint32_t key,
 static int
 setup_display(struct instance *i)
 {
-	struct video *vid = &i->video;
-	int n;
-
 	i->display = display_create();
 	if (!i->display)
 		return -1;
@@ -614,19 +611,6 @@ setup_display(struct instance *i)
 	window_set_user_data(i->window, i);
 	window_set_key_callback(i->window, handle_window_key);
 
-	for (n = 0; n < vid->cap_buf_cnt; n++) {
-		i->disp_buffers[n] =
-			window_create_buffer(i->window, i->group,
-					     n, vid->cap_ion_fd,
-					     vid->cap_buf_off[n][0],
-					     vid->cap_buf_format,
-					     vid->cap_w, vid->cap_h,
-					     vid->cap_buf_stride[0]);
-
-		if (!i->disp_buffers[n])
-			return -1;
-	}
-
 	return 0;
 }
 
@@ -635,7 +619,7 @@ int main(int argc, char **argv)
 	struct instance inst;
 	struct video *vid = &inst.video;
 	pthread_t parser_thread;
-	int ret, n;
+	int ret;
 
 	inst.sigfd = -1;
 
@@ -673,10 +657,6 @@ int main(int argc, char **argv)
 	if (ret)
 		goto err;
 
-	ret = video_setup_capture(&inst, 20, inst.width, inst.height);
-	if (ret)
-		goto err;
-
 	ret = setup_display(&inst);
 	if (ret)
 		goto err;
@@ -689,15 +669,7 @@ int main(int argc, char **argv)
 	if (ret)
 		goto err;
 
-	/* queue all capture buffers */
-	for (n = 0; n < vid->cap_buf_cnt; n++) {
-		if (video_queue_buf_cap(&inst, n))
-			goto err;
-		vid->cap_buf_flag[n] = 1;
-	}
-
-	ret = video_stream(&inst, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE,
-			   VIDIOC_STREAMON);
+	ret = restart_capture(&inst);
 	if (ret)
 		goto err;
 
