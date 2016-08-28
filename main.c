@@ -390,16 +390,18 @@ handle_video_capture(struct instance *i)
 
 	vid->cap_buf_flag[n] = 0;
 
-	info("decoded frame %ld with ts %lu.%03lu",
-	     vid->total_captured, tv.tv_sec, tv.tv_usec / 1000);
+	if (bytesused > 0) {
+		info("decoded frame %ld with ts %ld.%03lu",
+		     vid->total_captured, tv.tv_sec, tv.tv_usec / 1000);
 
-	vid->total_captured++;
+		vid->total_captured++;
 
-	save_frame(i, (void *)vid->cap_buf_addr[n][0],
-		   bytesused);
+		save_frame(i, (void *)vid->cap_buf_addr[n][0],
+			   bytesused);
 
-	window_show_buffer(i->window, i->disp_buffers[n],
-			   buffer_released, i);
+		window_show_buffer(i->window, i->disp_buffers[n],
+				   buffer_released, i);
+	}
 
 	if (finished) {
 		info("End of stream");
