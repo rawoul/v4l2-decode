@@ -9,7 +9,9 @@ Dependencies:
 * linux-msm-3.18 kernel headers
 * [wayland-client][wayland.git] library
 * [wayland-protocols][wayland-protocols.git] files
+* [ffmpeg 3.1][ffmpeg]
 
+[ffmpeg]: http://www.ffmpeg.org
 [wayland]: http://wayland.freedesktop.org
 [wayland.git]: https://cgit.freedesktop.org/wayland/wayland
 [wayland-protocols.git]: https://cgit.freedesktop.org/wayland/wayland-protocols

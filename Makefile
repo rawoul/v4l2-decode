@@ -34,14 +34,14 @@ GENERATED_SOURCES = \
   protocol/linux-dmabuf-unstable-v1-protocol.c \
   protocol/linux-dmabuf-unstable-v1-client-protocol.h
 
-SOURCES = main.c fileops.c args.c parser.c video.c display.c $(filter %.c,$(GENERATED_SOURCES))
+SOURCES = main.c args.c video.c display.c $(filter %.c,$(GENERATED_SOURCES))
 OBJECTS := $(SOURCES:.c=.o)
 EXEC = v4l2_decode
 
 cflags = -Wall -pthread $(CFLAGS)
 ldflags = -pthread $(LDFLAGS)
 cppflags = -Iprotocol -D_DEFAULT_SOURCE $(CPPFLAGS)
-ldlibs = -lm -lwayland-client
+ldlibs = -lm -lwayland-client -lavformat -lavcodec -lavutil
 
 all: $(EXEC)
 

@@ -37,14 +37,17 @@
 
 #include "args.h"
 #include "common.h"
-#include "fileops.h"
 #include "video.h"
 #include "display.h"
-#include "parser.h"
+
+#define av_err(errnum, fmt, ...) \
+	err(fmt ": %s", ##__VA_ARGS__, av_err2str(errnum))
 
 /* This is the size of the buffer for the compressed stream.
  * It limits the maximum compressed frame size. */
 #define STREAM_BUUFER_SIZE	(1024 * 1024)
+
+static void stream_close(struct instance *i);
 
 static const int event_type[] = {
 	V4L2_EVENT_MSM_VIDC_FLUSH_DONE,
@@ -203,6 +206,7 @@ handle_video_event(struct instance *i)
 
 void cleanup(struct instance *i)
 {
+	stream_close(i);
 	if (i->window)
 		window_destroy(i->window);
 	if (i->display)
@@ -211,54 +215,6 @@ void cleanup(struct instance *i)
 		close(i->sigfd);
 	if (i->video.fd)
 		video_close(i);
-	if (i->in.fd)
-		input_close(i);
-}
-
-int extract_and_process_header(struct instance *i)
-{
-	struct timeval tv;
-	int used, fs;
-	int ret;
-
-	ret = i->parser.func(&i->parser.ctx,
-			     i->in.p + i->in.offs,
-			     i->in.size - i->in.offs,
-			     i->video.out_buf_addr[0],
-			     i->video.out_buf_size,
-			     &used, &fs, 1);
-
-	if (ret == 0) {
-		err("Failed to extract header from stream");
-		return -1;
-	}
-
-	/* For H263 the header is passed with the first frame, so we should
-	 * pass it again */
-	if (i->parser.codec != V4L2_PIX_FMT_H263)
-		i->in.offs += used;
-	else
-	/* To do this we shall reset the stream parser to the initial
-	 * configuration */
-		parse_stream_init(&i->parser.ctx);
-
-	dbg("Extracted header of size %d", fs);
-
-	tv.tv_sec = 0;
-	tv.tv_usec = 0;
-
-	ret = video_queue_buf_out(i, 0, fs, 0, tv);
-	if (ret)
-		return -1;
-
-	i->video.out_buf_flag[0] = 1;
-
-	ret = video_stream(i, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE,
-			   VIDIOC_STREAMON);
-	if (ret)
-		return -1;
-
-	return 0;
 }
 
 int save_frame(struct instance *i, const void *buf, unsigned int size)
@@ -303,67 +259,169 @@ int save_frame(struct instance *i, const void *buf, unsigned int size)
 	return 0;
 }
 
+static int
+parse_frame(struct instance *i, AVPacket *pkt)
+{
+	int ret;
+
+	if (!i->bsf_data_pending) {
+		ret = av_read_frame(i->avctx, pkt);
+		if (ret < 0)
+			return ret;
+
+		if (pkt->stream_index != i->stream->index) {
+			av_packet_unref(pkt);
+			return AVERROR(EAGAIN);
+		}
+
+		if (i->bsf) {
+			ret = av_bsf_send_packet(i->bsf, pkt);
+			if (ret < 0)
+				return ret;
+
+			i->bsf_data_pending = 1;
+		}
+	}
+
+	if (i->bsf) {
+		ret = av_bsf_receive_packet(i->bsf, pkt);
+		if (ret == AVERROR(EAGAIN))
+			i->bsf_data_pending = 0;
+
+		if (ret < 0)
+			return ret;
+	}
+
+	return 0;
+}
+
+static void
+finish(struct instance *i)
+{
+	pthread_mutex_lock(&i->lock);
+	i->finish = 1;
+	pthread_cond_signal(&i->cond);
+	pthread_mutex_unlock(&i->lock);
+}
+
+static int
+send_eos(struct instance *i, int buf_index)
+{
+	struct video *vid = &i->video;
+	struct timeval tv;
+
+	tv.tv_sec = 0;
+	tv.tv_usec = 0;
+
+	if (video_queue_buf_out(i, buf_index, 0,
+				V4L2_QCOM_BUF_FLAG_EOS |
+				V4L2_QCOM_BUF_TIMESTAMP_INVALID, tv) < 0)
+		return -1;
+
+	vid->out_buf_flag[buf_index] = 1;
+
+	return 0;
+}
+
+static int
+send_pkt(struct instance *i, int buf_index, AVPacket *pkt)
+{
+	struct video *vid = &i->video;
+	struct timeval tv;
+	int flags;
+
+	memcpy(vid->out_buf_addr[buf_index], pkt->data, pkt->size);
+	flags = 0;
+
+	if (pkt->pts != AV_NOPTS_VALUE) {
+		AVRational vid_timebase;
+		AVRational v4l_timebase = { 1, 1000000 };
+		int64_t v4l_pts;
+
+		if (i->bsf)
+			vid_timebase = i->bsf->time_base_out;
+		else
+			vid_timebase = i->stream->time_base;
+
+		v4l_pts = av_rescale_q(pkt->pts, vid_timebase, v4l_timebase);
+		tv.tv_sec = v4l_pts / 1000000;
+		tv.tv_usec = v4l_pts % 1000000;
+	} else {
+		flags |= V4L2_QCOM_BUF_TIMESTAMP_INVALID;
+		tv.tv_sec = 0;
+		tv.tv_usec = 0;
+	}
+
+	if (video_queue_buf_out(i, buf_index, pkt->size, flags, tv) < 0)
+		return -1;
+
+	vid->out_buf_flag[buf_index] = 1;
+
+	return 0;
+}
+
+static int
+get_buffer_unlocked(struct instance *i)
+{
+	struct video *vid = &i->video;
+
+	for (int n = 0; n < vid->out_buf_cnt; n++) {
+		if (!vid->out_buf_flag[n])
+			return n;
+	}
+
+	return -1;
+}
+
 /* This threads is responsible for parsing the stream and
  * feeding video decoder with consecutive frames to decode */
 void *parser_thread_func(void *args)
 {
 	struct instance *i = (struct instance *)args;
-	struct video *vid = &i->video;
-	struct timeval tv;
-	uint32_t flags;
-	int used, fs, n;
-	int ret;
+	AVPacket pkt;
+	int buf, parse_ret;
 
 	dbg("Parser thread started");
 
-	while (!i->finish && !i->parser.finished) {
-		pthread_mutex_lock(&i->lock);
+	av_init_packet(&pkt);
 
-		for (n = 0; n < vid->out_buf_cnt && vid->out_buf_flag[n]; n++)
-			;
-
-		if (n == vid->out_buf_cnt) {
-			pthread_cond_wait(&i->cond, &i->lock);
-			pthread_mutex_unlock(&i->lock);
+	while (1) {
+		parse_ret = parse_frame(i, &pkt);
+		if (parse_ret == AVERROR(EAGAIN))
 			continue;
-		}
 
-		pthread_mutex_unlock(&i->lock);
 
-		ret = i->parser.func(&i->parser.ctx,
-				     i->in.p + i->in.offs,
-				     i->in.size - i->in.offs,
-				     vid->out_buf_addr[n],
-				     vid->out_buf_size,
-				     &used, &fs, 0);
-
-		if (ret == 0 && i->in.offs == i->in.size) {
-			info("Parser has extracted all frames");
-			i->parser.finished = 1;
-			fs = 0;
-		}
-
-		dbg("Extracted frame of size %d", fs);
-
-		flags = V4L2_QCOM_BUF_TIMESTAMP_INVALID;
-		if (fs == 0)
-			flags |= V4L2_QCOM_BUF_FLAG_EOS;
-
-		tv.tv_sec = 0;
-		tv.tv_usec = 0;
-
-		ret = video_queue_buf_out(i, n, fs, flags, tv);
+		buf = -1;
 
 		pthread_mutex_lock(&i->lock);
-		vid->out_buf_flag[n] = 1;
+		while (!i->finish && (buf = get_buffer_unlocked(i)) < 0)
+			pthread_cond_wait(&i->cond, &i->lock);
 		pthread_mutex_unlock(&i->lock);
 
-		i->in.offs += used;
+		if (buf < 0) {
+			/* decoding stopped before parsing ended, abort */
+			break;
+		}
+
+		if (parse_ret < 0) {
+			if (parse_ret == AVERROR_EOF)
+				dbg("Queue end of stream");
+			else
+				av_err(parse_ret, "Parsing failed");
+
+			send_eos(i, buf);
+			break;
+		}
+
+		if (send_pkt(i, buf, &pkt) < 0)
+			break;
+
+		av_packet_unref(&pkt);
 	}
 
-	dbg("Parser thread finished");
+	av_packet_unref(&pkt);
 
-	pthread_cond_signal(&i->cond);
+	dbg("Parser thread finished");
 
 	return NULL;
 }
@@ -418,8 +476,7 @@ handle_video_capture(struct instance *i)
 
 	if (finished) {
 		info("End of stream");
-		i->finish = 1;
-		pthread_cond_signal(&i->cond);
+		finish(i);
 	}
 
 	return 0;
@@ -460,8 +517,7 @@ handle_signal(struct instance *i)
 	sigaddset(&sigmask, siginfo.ssi_signo);
 	sigprocmask(SIG_UNBLOCK, &sigmask, NULL);
 
-	i->finish = 1;
-	pthread_cond_signal(&i->cond);
+	finish(i);
 
 	return 0;
 }
@@ -578,10 +634,7 @@ void main_loop(struct instance *i)
 		}
 	}
 
-	if (!i->finish) {
-		i->finish = 1;
-		pthread_cond_signal(&i->cond);
-	}
+	finish(i);
 
 	dbg("main thread finished");
 }
@@ -597,13 +650,16 @@ handle_window_key(struct window *window, uint32_t time, uint32_t key,
 
 	switch (key) {
 	case KEY_ESC:
-		i->finish = 1;
-		pthread_cond_signal(&i->cond);
+		finish(i);
 		break;
 
 	case KEY_SPACE:
 		info("%s", i->paused ? "Resume" : "Pause");
 		i->paused = !i->paused;
+		if (i->paused)
+			av_read_pause(i->avctx);
+		else
+			av_read_play(i->avctx);
 		break;
 
 	case KEY_F:
@@ -629,6 +685,122 @@ setup_display(struct instance *i)
 	return 0;
 }
 
+static void
+stream_close(struct instance *i)
+{
+	i->stream = NULL;
+	if (i->bsf)
+		av_bsf_free(&i->bsf);
+	if (i->avctx)
+		avformat_close_input(&i->avctx);
+}
+
+static int
+stream_open(struct instance *i)
+{
+	const AVBitStreamFilter *filter;
+	AVCodecParameters *codecpar;
+	int codec;
+	int ret;
+
+	av_register_all();
+	avformat_network_init();
+
+	ret = avformat_open_input(&i->avctx, i->url, NULL, NULL);
+	if (ret < 0) {
+		av_err(ret, "failed to open %s", i->url);
+		goto fail;
+	}
+
+	ret = av_find_best_stream(i->avctx, AVMEDIA_TYPE_VIDEO, -1, -1,
+				  NULL, 0);
+	if (ret < 0) {
+		av_err(ret, "stream does not seem to contain video");
+		goto fail;
+	}
+
+	i->stream = i->avctx->streams[ret];
+	codecpar = i->stream->codecpar;
+
+	if (codecpar->width == 0 || codecpar->height == 0) {
+		ret = avformat_find_stream_info(i->avctx, NULL);
+		if (ret < 0) {
+			av_err(ret, "failed to get streams info");
+			goto fail;
+		}
+	}
+
+	i->width = codecpar->width;
+	i->height = codecpar->height;
+
+	filter = NULL;
+
+	switch (codecpar->codec_id) {
+	case AV_CODEC_ID_H263:
+		codec = V4L2_PIX_FMT_H263;
+		break;
+	case AV_CODEC_ID_H264:
+		codec = V4L2_PIX_FMT_H264;
+		filter = av_bsf_get_by_name("h264_mp4toannexb");
+		break;
+	case AV_CODEC_ID_HEVC:
+		codec = V4L2_PIX_FMT_HEVC;
+		filter = av_bsf_get_by_name("hevc_mp4toannexb");
+		break;
+	case AV_CODEC_ID_MPEG2VIDEO:
+		codec = V4L2_PIX_FMT_MPEG2;
+		break;
+	case AV_CODEC_ID_MPEG4:
+		codec = V4L2_PIX_FMT_MPEG4;
+		break;
+	case AV_CODEC_ID_MSMPEG4V3:
+		codec = V4L2_PIX_FMT_DIVX_311;
+		break;
+	case AV_CODEC_ID_WMV3:
+		codec = V4L2_PIX_FMT_VC1_ANNEX_G;
+		break;
+	case AV_CODEC_ID_VC1:
+		codec = V4L2_PIX_FMT_VC1_ANNEX_L;
+		break;
+	case AV_CODEC_ID_VP8:
+		codec = V4L2_PIX_FMT_VP8;
+		break;
+	case AV_CODEC_ID_VP9:
+		codec = V4L2_PIX_FMT_VP9;
+		break;
+	default:
+		err("cannot decode %s", avcodec_get_name(codecpar->codec_id));
+		goto fail;
+	}
+
+	i->fourcc = codec;
+
+	if (filter) {
+		ret = av_bsf_alloc(filter, &i->bsf);
+		if (ret < 0) {
+			av_err(ret, "cannot allocate bistream filter");
+			goto fail;
+		}
+
+		avcodec_parameters_copy(i->bsf->par_in, codecpar);
+		i->bsf->time_base_in = i->stream->time_base;
+
+		ret = av_bsf_init(i->bsf);
+		if (ret < 0) {
+			av_err(ret, "failed to initialize bitstream filter");
+			goto fail;
+		}
+	}
+
+	av_dump_format(i->avctx, i->stream->index, i->url, 0);
+
+	return 0;
+
+fail:
+	stream_close(i);
+	return -1;
+}
+
 int main(int argc, char **argv)
 {
 	struct instance inst;
@@ -644,14 +816,10 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	info("decoding resolution is %dx%d", inst.width, inst.height);
-
 	pthread_mutex_init(&inst.lock, 0);
 	pthread_cond_init(&inst.cond, 0);
 
-	vid->total_captured = 0;
-
-	ret = input_open(&inst, inst.in.name);
+	ret = stream_open(&inst);
 	if (ret)
 		goto err;
 
@@ -663,12 +831,8 @@ int main(int argc, char **argv)
 	if (ret)
 		goto err;
 
-	ret = video_setup_output(&inst, inst.parser.codec,
+	ret = video_setup_output(&inst, inst.fourcc,
 				 STREAM_BUUFER_SIZE, 6);
-	if (ret)
-		goto err;
-
-	ret = parse_stream_init(&inst.parser.ctx);
 	if (ret)
 		goto err;
 
@@ -680,7 +844,8 @@ int main(int argc, char **argv)
 	if (ret)
 		goto err;
 
-	ret = extract_and_process_header(&inst);
+	ret = video_stream(&inst, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE,
+			   VIDIOC_STREAMON);
 	if (ret)
 		goto err;
 

@@ -28,7 +28,9 @@
 #include <stdint.h>
 #include <pthread.h>
 
-#include "parser.h"
+#include <libavformat/avformat.h>
+#include <libavcodec/avcodec.h>
+
 #include "display.h"
 
 /* When ADD_DETAILS is defined every debug and error message contains
@@ -55,11 +57,11 @@
 #ifdef DEBUG
 #ifdef ADD_DETAILS
 #define dbg(msg, ...) \
-	fprintf(stdout, "(%s:%s:%d): " msg "\n", __FILE__, \
+	fprintf(stderr, "(%s:%s:%d): " msg "\n", __FILE__, \
 		__func__, __LINE__, ##__VA_ARGS__)
 #else
 #define dbg(msg, ...) \
-	fprintf(stdout, msg "\n", ##__VA_ARGS__)
+	fprintf(stderr, msg "\n", ##__VA_ARGS__)
 #endif /* ADD_DETAILS */
 #else /* DEBUG */
 #define dbg(...) {}
@@ -83,15 +85,6 @@
 
 /* Maximum number of planes used in the application */
 #define MAX_PLANES		CAP_PLANES
-
-/* Input file related parameters */
-struct input {
-	char *name;
-	int fd;
-	char *p;
-	int size;
-	int offs;
-};
 
 /* video decoder related parameters */
 struct video {
@@ -123,35 +116,17 @@ struct video {
 	unsigned long total_captured;
 };
 
-/* Parser related parameters */
-struct parser {
-	struct mfc_parser_context ctx;
-	unsigned long codec;
-	/* Callback function to the real parsing function.
-	 * Dependent on the codec used. */
-	int (*func)(struct mfc_parser_context *ctx,
-		    char* in, int in_size, char* out, int out_size,
-		    int *consumed, int *frame_size, char get_head);
-	/* Set when the parser has finished and end of file has
-	 * been reached */
-	int finished;
-};
-
 struct instance {
 	int width;
 	int height;
+	uint32_t fourcc;
 	int save_frames;
 	int decode_order;
 	char *save_path;
-
-	/* Input file related parameters */
-	struct input	in;
+	char *url;
 
 	/* video decoder related parameters */
 	struct video	video;
-
-	/* Parser related parameters */
-	struct parser	parser;
 
 	pthread_mutex_t lock;
 	pthread_cond_t cond;
@@ -168,6 +143,11 @@ struct instance {
 	struct display *display;
 	struct window *window;
 	struct fb *disp_buffers[MAX_CAP_BUF];
+
+	AVFormatContext *avctx;
+	AVStream *stream;
+	AVBSFContext *bsf;
+	int bsf_data_pending;
 };
 
 #endif /* INCLUDE_COMMON_H */
