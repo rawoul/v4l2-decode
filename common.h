@@ -33,38 +33,21 @@
 
 #include "display.h"
 
-/* When ADD_DETAILS is defined every debug and error message contains
- * information about the file, function and line of code where it has
- * been called */
-//#define ADD_DETAILS
-
 /* When DEBUG is defined debug messages are printed on the screen.
  * Otherwise only error messages are displayed. */
-#define DEBUG
+//#define DEBUG
 
-#ifdef ADD_DETAILS
-#define err(msg, ...) \
-	fprintf(stderr, "Error (%s:%s:%d): " msg "\n", __FILE__, \
-		__func__, __LINE__, ##__VA_ARGS__)
-#else
 #define err(msg, ...) \
 	fprintf(stderr, "Error: " msg "\n", ##__VA_ARGS__)
-#endif /* ADD_DETAILS */
 
 #define info(msg, ...) \
 	fprintf(stderr, "Info : " msg "\n", ##__VA_ARGS__)
 
 #ifdef DEBUG
-#ifdef ADD_DETAILS
-#define dbg(msg, ...) \
-	fprintf(stderr, "(%s:%s:%d): " msg "\n", __FILE__, \
-		__func__, __LINE__, ##__VA_ARGS__)
-#else
 #define dbg(msg, ...) \
 	fprintf(stderr, msg "\n", ##__VA_ARGS__)
-#endif /* ADD_DETAILS */
 #else /* DEBUG */
-#define dbg(...) {}
+#define dbg(...) ({})
 #endif /* DEBUG */
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))

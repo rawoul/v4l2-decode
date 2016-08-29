@@ -58,7 +58,8 @@ static const int event_type[] = {
 	V4L2_EVENT_MSM_VIDC_HW_UNSUPPORTED,
 };
 
-int subscribe_events(struct instance *i)
+static int
+subscribe_events(struct instance *i)
 {
 	const int n_events = sizeof(event_type) / sizeof(event_type[0]);
 	int idx;
@@ -204,7 +205,8 @@ handle_video_event(struct instance *i)
 	return 0;
 }
 
-void cleanup(struct instance *i)
+static void
+cleanup(struct instance *i)
 {
 	stream_close(i);
 	if (i->window)
@@ -217,7 +219,8 @@ void cleanup(struct instance *i)
 		video_close(i);
 }
 
-int save_frame(struct instance *i, const void *buf, unsigned int size)
+static int
+save_frame(struct instance *i, const void *buf, unsigned int size)
 {
 	mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
 	char filename[64];
@@ -375,7 +378,8 @@ get_buffer_unlocked(struct instance *i)
 
 /* This threads is responsible for parsing the stream and
  * feeding video decoder with consecutive frames to decode */
-void *parser_thread_func(void *args)
+static void *
+parser_thread_func(void *args)
 {
 	struct instance *i = (struct instance *)args;
 	AVPacket pkt;
@@ -804,11 +808,8 @@ fail:
 int main(int argc, char **argv)
 {
 	struct instance inst;
-	struct video *vid = &inst.video;
 	pthread_t parser_thread;
 	int ret;
-
-	inst.sigfd = -1;
 
 	ret = parse_args(&inst, argc, argv);
 	if (ret) {
@@ -816,6 +817,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
+	inst.sigfd = -1;
 	pthread_mutex_init(&inst.lock, 0);
 	pthread_cond_init(&inst.cond, 0);
 
@@ -874,7 +876,7 @@ int main(int argc, char **argv)
 	pthread_cond_destroy(&inst.cond);
 	pthread_mutex_destroy(&inst.lock);
 
-	info("Total frames captured %ld", vid->total_captured);
+	info("Total frames captured %ld", inst.video.total_captured);
 
 	return 0;
 err:
