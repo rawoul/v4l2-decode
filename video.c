@@ -245,6 +245,14 @@ int video_set_control(struct instance *i)
 		return -1;
 	}
 
+	control.id = V4L2_CID_MPEG_VIDC_SET_PERF_LEVEL;
+	control.value = V4L2_CID_MPEG_VIDC_PERF_LEVEL_TURBO;
+
+	if (ioctl(i->video.fd, VIDIOC_S_CTRL, &control) < 0) {
+		err("failed to set perf level: %m");
+		return -1;
+	}
+
 	return 0;
 }
 
