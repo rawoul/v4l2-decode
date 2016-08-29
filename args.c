@@ -28,6 +28,8 @@
 
 #include "common.h"
 
+int debug_level;
+
 void print_usage(char *name)
 {
 	fprintf(stderr, "usage: %s [OPTS] <URL>\n", name);
@@ -46,7 +48,9 @@ int parse_args(struct instance *i, int argc, char **argv)
 
 	i->video.name = "/dev/video32";
 
-	while ((c = getopt(argc, argv, "dhm:f:")) != -1) {
+	debug_level = 2;
+
+	while ((c = getopt(argc, argv, "dhm:f:qv")) != -1) {
 		switch (c) {
 		case 'm':
 			i->video.name = optarg;
@@ -57,6 +61,12 @@ int parse_args(struct instance *i, int argc, char **argv)
 			break;
 		case 'd':
 			i->decode_order = 1;
+			break;
+		case 'q':
+			debug_level = 0;
+			break;
+		case 'v':
+			debug_level++;
 			break;
 		default:
 			err("bad argument\n");

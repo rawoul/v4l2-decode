@@ -12,6 +12,8 @@
 #include "xdg-shell-unstable-v6-client-protocol.h"
 #include "linux-dmabuf-unstable-v1-client-protocol.h"
 
+#define DBG_TAG "  disp"
+
 struct display {
 	struct wl_display *display;
 	struct wl_registry *registry;

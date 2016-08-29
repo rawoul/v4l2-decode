@@ -33,22 +33,22 @@
 
 #include "display.h"
 
-/* When DEBUG is defined debug messages are printed on the screen.
- * Otherwise only error messages are displayed. */
-//#define DEBUG
+extern int debug_level;
+
+#define print(l, msg, ...)						\
+	do {								\
+		if (debug_level >= l)					\
+			fprintf(stderr, msg, ##__VA_ARGS__);		\
+	} while (0)
 
 #define err(msg, ...) \
-	fprintf(stderr, "Error: " msg "\n", ##__VA_ARGS__)
+	print(1, "error: " msg "\n", ##__VA_ARGS__)
 
 #define info(msg, ...) \
-	fprintf(stderr, "Info : " msg "\n", ##__VA_ARGS__)
+	print(2, msg "\n", ##__VA_ARGS__)
 
-#ifdef DEBUG
 #define dbg(msg, ...) \
-	fprintf(stderr, msg "\n", ##__VA_ARGS__)
-#else /* DEBUG */
-#define dbg(...) ({})
-#endif /* DEBUG */
+	print(3, DBG_TAG ": " msg "\n", ##__VA_ARGS__)
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 

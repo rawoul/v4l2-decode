@@ -38,6 +38,8 @@
 
 #include "common.h"
 
+#define DBG_TAG "   vid"
+
 static char *dbg_type[2] = {"OUTPUT", "CAPTURE"};
 static char *dbg_status[2] = {"ON", "OFF"};
 

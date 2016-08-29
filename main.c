@@ -40,6 +40,8 @@
 #include "video.h"
 #include "display.h"
 
+#define DBG_TAG "  main"
+
 #define av_err(errnum, fmt, ...) \
 	err(fmt ": %s", ##__VA_ARGS__, av_err2str(errnum))
 
@@ -700,12 +702,30 @@ stream_close(struct instance *i)
 }
 
 static int
+get_av_log_level(void)
+{
+	if (debug_level >= 5)
+		return AV_LOG_TRACE;
+	if (debug_level >= 4)
+		return AV_LOG_DEBUG;
+	if (debug_level >= 3)
+		return AV_LOG_VERBOSE;
+	if (debug_level >= 2)
+		return AV_LOG_INFO;
+	if (debug_level >= 1)
+		return AV_LOG_ERROR;
+	return AV_LOG_QUIET;
+}
+
+static int
 stream_open(struct instance *i)
 {
 	const AVBitStreamFilter *filter;
 	AVCodecParameters *codecpar;
 	int codec;
 	int ret;
+
+	av_log_set_level(get_av_log_level());
 
 	av_register_all();
 	avformat_network_init();
