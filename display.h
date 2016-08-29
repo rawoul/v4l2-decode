@@ -25,6 +25,7 @@ struct fb {
 	int busy;
 	uint32_t format;
 	struct wl_buffer *buffer;
+	struct wp_presentation_feedback *presentation_feedback;
 	fb_release_cb_t release_cb;
 	void *cb_data;
 };

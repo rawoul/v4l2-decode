@@ -8,6 +8,7 @@
 
 #include "common.h"
 #include "viewporter-client-protocol.h"
+#include "presentation-time-client-protocol.h"
 #include "xdg-shell-unstable-v6-client-protocol.h"
 #include "linux-dmabuf-unstable-v1-client-protocol.h"
 
@@ -19,6 +20,7 @@ struct display {
 	struct wl_keyboard *keyboard;
 	struct zxdg_shell_v6 *xdg_shell;
 	struct wp_viewporter *viewporter;
+	struct wp_presentation *presentation;
 	struct zwp_linux_dmabuf_v1 *dmabuf;
 	uint32_t drm_formats[32];
 	int compositor_version;
@@ -52,6 +54,8 @@ struct window {
 void
 fb_destroy(struct fb *fb)
 {
+	if (fb->presentation_feedback)
+		wp_presentation_feedback_destroy(fb->presentation_feedback);
 	if (fb->buffer)
 		wl_buffer_destroy(fb->buffer);
 	free(fb);
@@ -76,6 +80,46 @@ window_set_key_callback(struct window *w, window_key_cb_t callback)
 }
 
 static void
+handle_sync_output(void *data, struct wp_presentation_feedback *feedback,
+		   struct wl_output *output)
+{
+}
+
+static void
+handle_presented(void *data, struct wp_presentation_feedback *feedback,
+		 uint32_t tv_sec_hi, uint32_t tv_sec_lo, uint32_t tv_nsec,
+		 uint32_t refresh, uint32_t seq_hi, uint32_t seq_lo,
+		 uint32_t flags)
+{
+	struct fb *fb = data;
+	uint64_t tv_sec = (uint64_t)tv_sec_hi << 32 | tv_sec_lo;
+
+	dbg("buffer %d displayed at %lu.%04u, %u.%04us till next refresh",
+	    fb->index, tv_sec, tv_nsec / 1000000, refresh / 1000000000,
+	    refresh / 1000000);
+
+	wp_presentation_feedback_destroy(feedback);
+	fb->presentation_feedback = NULL;
+}
+
+static void
+handle_discarded(void *data, struct wp_presentation_feedback *feedback)
+{
+	struct fb *fb = data;
+
+	dbg("buffer %d discarded", fb->index);
+
+	wp_presentation_feedback_destroy(feedback);
+	fb->presentation_feedback = NULL;
+}
+
+static const struct wp_presentation_feedback_listener presentation_feedback_listener = {
+	handle_sync_output,
+	handle_presented,
+	handle_discarded,
+};
+
+static void
 window_commit(struct window *w)
 {
 	struct display *display = w->display;
@@ -93,6 +137,21 @@ window_commit(struct window *w)
 					 fb->width, fb->height);
 	else
 		wl_surface_damage(w->surface, 0, 0, w->width, w->height);
+
+
+	if (fb) {
+		if (fb->presentation_feedback)
+			wp_presentation_feedback_destroy(fb->presentation_feedback);
+
+		fb->presentation_feedback =
+			wp_presentation_feedback(display->presentation,
+						 w->surface);
+
+		wp_presentation_feedback_add_listener(
+			fb->presentation_feedback,
+			&presentation_feedback_listener, fb);
+	}
+
 
 	wl_surface_commit(w->surface);
 
@@ -284,6 +343,8 @@ buffer_release(void *data, struct wl_buffer *buffer)
 
 	fb->busy = 0;
 
+	dbg("buffer %d released", fb->index);
+
 	if (fb->release_cb)
 		fb->release_cb(fb, fb->cb_data);
 }
@@ -380,24 +441,14 @@ window_create_buffer(struct window *window, int group,
 	return fb;
 }
 
-static void handle_sync_event(void *data, struct wl_callback *callback,
-			      uint32_t serial)
-{
-	wl_callback_destroy(callback);
-}
-
-static const struct wl_callback_listener sync_listener = {
-	handle_sync_event
-};
-
 void
 window_show_buffer(struct window *window, struct fb *fb,
 		   fb_release_cb_t release_cb, void *cb_data)
 {
-	struct wl_callback *callback;
-
 	fb->release_cb = release_cb;
 	fb->cb_data = cb_data;
+
+	dbg("present buffer %d", fb->index);
 
 	window->buffer = fb;
 
@@ -410,9 +461,6 @@ window_show_buffer(struct window *window, struct fb *fb,
 		window_recenter(window);
 		window_commit(window);
 	}
-
-	callback = wl_display_sync(window->display->display);
-	wl_callback_add_listener(callback, &sync_listener, NULL);
 }
 
 static void
@@ -548,6 +596,10 @@ registry_handle_global(void *data, struct wl_registry *registry,
 	} else if (!strcmp(interface, "wp_viewporter")) {
 		d->viewporter = wl_registry_bind(registry, id,
 						 &wp_viewporter_interface, 1);
+	} else if (!strcmp(interface, "wp_presentation")) {
+		d->presentation = wl_registry_bind(registry, id,
+						   &wp_presentation_interface,
+						   1);
 	} else if (!strcmp(interface, "zxdg_shell_v6")) {
 		d->xdg_shell = wl_registry_bind(registry, id,
 						&zxdg_shell_v6_interface, 1);
@@ -587,6 +639,8 @@ display_destroy(struct display *display)
 
 	if (display->viewporter)
 		wp_viewporter_destroy(display->viewporter);
+	if (display->presentation)
+		wp_presentation_destroy(display->presentation);
 	if (display->compositor)
 		wl_compositor_destroy(display->compositor);
 	if (display->xdg_shell)

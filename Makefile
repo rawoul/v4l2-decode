@@ -29,6 +29,8 @@ WAYLAND_PROTOCOLS_DATADIR := $(shell $(PKG_CONFIG) --variable=pkgdatadir wayland
 GENERATED_SOURCES = \
   protocol/viewporter-protocol.c \
   protocol/viewporter-client-protocol.h \
+  protocol/presentation-time-protocol.c \
+  protocol/presentation-time-client-protocol.h \
   protocol/xdg-shell-unstable-v6-protocol.c \
   protocol/xdg-shell-unstable-v6-client-protocol.h \
   protocol/linux-dmabuf-unstable-v1-protocol.c \
