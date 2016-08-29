@@ -43,11 +43,8 @@ int video_subscribe_event(struct instance *i, int event_type);
 int video_setup_output(struct instance *i, unsigned long codec,
 		       unsigned int size, int count);
 
-/* Setup the CAPTURE queue. The argument extra_buf means the number of extra
- * buffers that should added to the minimum number of buffers required
- * by MFC. The final number of buffers allocated is stored in the instance
- * structure. */
-int video_setup_capture(struct instance *i, int extra_buf, int w, int h);
+/* Setup the CAPTURE queue. */
+int video_setup_capture(struct instance *i, int num_buffers, int w, int h);
 
 /* Stop OUTPUT queue and release buffers */
 int video_stop_output(struct instance *i);

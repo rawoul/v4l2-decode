@@ -550,7 +550,7 @@ static int get_msm_color_format(uint32_t fourcc)
 	return -1;
 }
 
-int video_setup_capture(struct instance *i, int extra_buf, int w, int h)
+int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 {
 	struct video *vid = &i->video;
 	struct v4l2_format fmt;
@@ -576,10 +576,8 @@ int video_setup_capture(struct instance *i, int extra_buf, int w, int h)
 		return -1;
 	}
 
-	vid->cap_buf_cnt = 4 + extra_buf;
-
 	memzero(reqbuf);
-	reqbuf.count = vid->cap_buf_cnt;
+	reqbuf.count = num_buffers;
 	reqbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 	reqbuf.memory = V4L2_MEMORY_USERPTR;
 
@@ -588,8 +586,8 @@ int video_setup_capture(struct instance *i, int extra_buf, int w, int h)
 		return -1;
 	}
 
-	dbg("Number of CAPTURE buffers is %d (requested %d, extra %d)",
-	    reqbuf.count, vid->cap_buf_cnt, extra_buf);
+	dbg("Number of CAPTURE buffers is %d (requested %d)",
+	    reqbuf.count, num_buffers);
 
 	vid->cap_buf_cnt = reqbuf.count;
 
