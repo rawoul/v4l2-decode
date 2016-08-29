@@ -478,6 +478,10 @@ handle_video_capture(struct instance *i)
 
 		window_show_buffer(i->window, i->disp_buffers[n],
 				   buffer_released, i);
+
+	} else if (!i->reconfigure_pending) {
+		if (video_queue_buf_cap(i, n) == 0)
+			vid->cap_buf_flag[n] = 1;
 	}
 
 	if (finished) {
