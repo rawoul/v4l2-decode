@@ -580,6 +580,11 @@ static const struct wl_registry_listener registry_listener = {
 void
 display_destroy(struct display *display)
 {
+	if (display->seat) {
+		seat_handle_capabilities(display, display->seat, 0);
+		wl_seat_destroy(display->seat);
+	}
+
 	if (display->viewporter)
 		wp_viewporter_destroy(display->viewporter);
 	if (display->compositor)
