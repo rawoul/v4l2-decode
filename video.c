@@ -370,6 +370,8 @@ int video_queue_buf_cap(struct instance *i, int n)
 
 	dbg("Queued buffer on CAPTURE queue with index %d", buf.index);
 
+	vid->cap_buf_flag[n] = 1;
+
 	return 0;
 }
 
@@ -391,6 +393,7 @@ static int video_dequeue_buf(struct instance *i, struct v4l2_buffer *buf)
 		    buf->index);
 		break;
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
+		vid->cap_buf_flag[buf->index] = 0;
 		dbg("Dequeued buffer on CAPTURE queue with index %d "
 		    "(flags:%08x, bytesused:%d, ts: %ld.%lu)",
 		    buf->index, buf->flags, buf->m.planes[0].bytesused,

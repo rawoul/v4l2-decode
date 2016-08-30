@@ -103,8 +103,6 @@ restart_capture(struct instance *i)
 	for (n = 0; n < vid->cap_buf_cnt; n++) {
 		if (video_queue_buf_cap(i, n))
 			return -1;
-
-		vid->cap_buf_flag[n] = 1;
 	}
 
 	/* Start streaming */
@@ -436,7 +434,6 @@ static void
 buffer_released(struct fb *fb, void *data)
 {
 	struct instance *i = data;
-	struct video *vid = &i->video;
 	int n = fb->index;
 
 	if (fb->group != i->group) {
@@ -444,8 +441,7 @@ buffer_released(struct fb *fb, void *data)
 		return;
 	}
 
-	if (video_queue_buf_cap(i, n) == 0)
-		vid->cap_buf_flag[n] = 1;
+	video_queue_buf_cap(i, n);
 }
 
 static int
@@ -465,8 +461,6 @@ handle_video_capture(struct instance *i)
 		return ret;
 	}
 
-	vid->cap_buf_flag[n] = 0;
-
 	if (bytesused > 0) {
 		info("decoded frame %ld with ts %ld.%03lu",
 		     vid->total_captured, tv.tv_sec, tv.tv_usec / 1000);
@@ -480,8 +474,7 @@ handle_video_capture(struct instance *i)
 				   buffer_released, i);
 
 	} else if (!i->reconfigure_pending) {
-		if (video_queue_buf_cap(i, n) == 0)
-			vid->cap_buf_flag[n] = 1;
+		video_queue_buf_cap(i, n);
 	}
 
 	if (finished) {
