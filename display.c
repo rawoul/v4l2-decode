@@ -45,7 +45,9 @@ struct window {
 	struct fb *buffer;
 	int width, height;
 	int saved_width, saved_height;
+	int ar_x, ar_y;
 	bool size_set;
+	bool saved_size_set;
 	bool configured;
 	bool fullscreen;
 
@@ -164,23 +166,49 @@ static int
 window_recenter(struct window *w)
 {
 	struct fb *fb = w->buffer;
-	int video_width;
-	int video_height;
+	int video_w, video_h;
+	int output_w, output_h;
 
-	if (!fb || !w->viewport || w->width <= 0 || w->height <= 0)
+	if (!fb || !w->viewport)
 		return 0;
 
-	if (fb->width * w->height > fb->height * w->width) {
-		video_width = w->width;
-		video_height = w->width * fb->height / fb->width;
+	if (fb->width * w->ar_y > fb->height * w->ar_x) {
+		video_w = fb->width * w->ar_x / w->ar_y;
+		video_h = fb->height;
 	} else {
-		video_width = w->height * fb->width / fb->height;
-		video_height = w->height;
+		video_w = fb->width;
+		video_h = fb->height * w->ar_y / w->ar_x;
 	}
 
-	wp_viewport_set_destination(w->viewport, video_width, video_height);
+	if (!w->size_set) {
+		output_w = video_w;
+		output_h = video_h;
+	} else if (video_w * w->height > video_h * w->width) {
+		output_w = w->width;
+		output_h = w->width * video_h / video_w;
+	} else {
+		output_w = w->height * video_w / video_h;
+		output_h = w->height;
+	}
+
+	wp_viewport_set_destination(w->viewport, output_w, output_h);
 
 	return 1;
+}
+
+void
+window_set_aspect_ratio(struct window *w, int ar_x, int ar_y)
+{
+	if (ar_x == 0 || ar_y == 0)
+		return;
+
+	w->ar_x = ar_x;
+	w->ar_y = ar_y;
+
+	if (w->configured) {
+		window_recenter(w);
+		window_commit(w);
+	}
 }
 
 void
@@ -218,14 +246,16 @@ xdg_toplevel_handle_configure(void *data, struct zxdg_toplevel_v6 *xdg_toplevel,
 		if (fullscreen) {
 			w->saved_width = w->width;
 			w->saved_height = w->height;
+			w->saved_size_set = w->size_set;
 		} else {
 			w->width = w->saved_width;
 			w->height = w->saved_height;
+			w->size_set = w->saved_size_set;
 		}
 		w->fullscreen = fullscreen;
 	}
 
-	if (width <= 0 || height <= 0 || !w->viewport)
+	if (width <= 0 || height <= 0)
 		return;
 
 	if (w->width != width || w->height != height) {
@@ -277,6 +307,8 @@ display_create_window(struct display *display)
 
 	window->display = display;
 	window->surface = wl_compositor_create_surface(display->compositor);
+	window->ar_x = 1;
+	window->ar_y = 1;
 
 	if (display->xdg_shell) {
 		window->xdg_surface =
@@ -453,11 +485,6 @@ window_show_buffer(struct window *window, struct fb *fb,
 	dbg("present buffer %d", fb->index);
 
 	window->buffer = fb;
-
-	if (!window->size_set) {
-		window->width = fb->width;
-		window->height = fb->height;
-	}
 
 	if (window->configured) {
 		window_recenter(window);

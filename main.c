@@ -671,6 +671,8 @@ handle_window_key(struct window *window, uint32_t time, uint32_t key,
 static int
 setup_display(struct instance *i)
 {
+	AVRational ar;
+
 	i->display = display_create();
 	if (!i->display)
 		return -1;
@@ -681,6 +683,9 @@ setup_display(struct instance *i)
 
 	window_set_user_data(i->window, i);
 	window_set_key_callback(i->window, handle_window_key);
+
+	ar = av_guess_sample_aspect_ratio(i->avctx, i->stream, NULL);
+	window_set_aspect_ratio(i->window, ar.num, ar.den);
 
 	return 0;
 }
