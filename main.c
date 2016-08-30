@@ -462,9 +462,6 @@ handle_video_capture(struct instance *i)
 	}
 
 	if (bytesused > 0) {
-		info("decoded frame %ld with ts %ld.%03lu",
-		     vid->total_captured, tv.tv_sec, tv.tv_usec / 1000);
-
 		vid->total_captured++;
 
 		save_frame(i, (void *)vid->cap_buf_addr[n][0],

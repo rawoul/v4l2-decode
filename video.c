@@ -40,9 +40,6 @@
 
 #define DBG_TAG "   vid"
 
-static char *dbg_type[2] = {"OUTPUT", "CAPTURE"};
-static char *dbg_status[2] = {"ON", "OFF"};
-
 #define CASE(ENUM) case ENUM: return #ENUM;
 
 static const char *fourcc_to_string(uint32_t fourcc)
@@ -53,6 +50,20 @@ static const char *fourcc_to_string(uint32_t fourcc)
 	memcpy(s, &fmt, 4);
 
 	return s;
+}
+
+static const char *buf_type_to_string(enum v4l2_buf_type type)
+{
+	switch (type) {
+	case V4L2_BUF_TYPE_VIDEO_OUTPUT:
+	case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
+		return "OUTPUT";
+	case V4L2_BUF_TYPE_VIDEO_CAPTURE:
+	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
+		return "CAPTURE";
+	default:
+		return "??";
+	}
 }
 
 static const char *v4l2_field_to_string(enum v4l2_field field)
@@ -94,14 +105,13 @@ static void list_formats(struct instance *i, enum v4l2_buf_type type)
 	struct v4l2_fmtdesc fdesc;
 	struct v4l2_frmsizeenum frmsize;
 
-	info("%s formats:",
-	     dbg_type[type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE]);
+	dbg("%s formats:", buf_type_to_string(type));
 
 	memzero(fdesc);
 	fdesc.type = type;
 
 	while (!ioctl(i->video.fd, VIDIOC_ENUM_FMT, &fdesc)) {
-		info("  %s", fdesc.description);
+		dbg("  %s", fdesc.description);
 
 		memzero(frmsize);
 		frmsize.pixel_format = fdesc.pixelformat;
@@ -109,19 +119,19 @@ static void list_formats(struct instance *i, enum v4l2_buf_type type)
 		while (!ioctl(i->video.fd, VIDIOC_ENUM_FRAMESIZES, &frmsize)) {
 			switch (frmsize.type) {
 			case V4L2_FRMSIZE_TYPE_DISCRETE:
-				info("    %dx%d",
-				     frmsize.discrete.width,
-				     frmsize.discrete.height);
+				dbg("    %dx%d",
+				    frmsize.discrete.width,
+				    frmsize.discrete.height);
 				break;
 			case V4L2_FRMSIZE_TYPE_STEPWISE:
 			case V4L2_FRMSIZE_TYPE_CONTINUOUS:
-				info("    %dx%d to %dx%d, step %+d%+d",
-				     frmsize.stepwise.min_width,
-				     frmsize.stepwise.min_height,
-				     frmsize.stepwise.max_width,
-				     frmsize.stepwise.max_height,
-				     frmsize.stepwise.step_width,
-				     frmsize.stepwise.step_height);
+				dbg("    %dx%d to %dx%d, step %+d%+d",
+				    frmsize.stepwise.min_width,
+				    frmsize.stepwise.min_height,
+				    frmsize.stepwise.max_width,
+				    frmsize.stepwise.max_height,
+				    frmsize.stepwise.step_width,
+				    frmsize.stepwise.step_height);
 				break;
 			}
 
@@ -151,60 +161,60 @@ int video_open(struct instance *i, char *name)
 		return -1;
 	}
 
-	info("caps (%s): driver=\"%s\" bus_info=\"%s\" card=\"%s\" "
-	     "version=%u.%u.%u", name, cap.driver, cap.bus_info, cap.card,
-	     (cap.version >> 16) & 0xff,
-	     (cap.version >> 8) & 0xff,
-	     cap.version & 0xff);
+	dbg("caps (%s): driver=\"%s\" bus_info=\"%s\" card=\"%s\" "
+	    "version=%u.%u.%u", name, cap.driver, cap.bus_info, cap.card,
+	    (cap.version >> 16) & 0xff,
+	    (cap.version >> 8) & 0xff,
+	    cap.version & 0xff);
 
-	info("  [%c] V4L2_CAP_VIDEO_CAPTURE",
-	     cap.capabilities & V4L2_CAP_VIDEO_CAPTURE ? '*' : ' ');
-	info("  [%c] V4L2_CAP_VIDEO_CAPTURE_MPLANE",
-	     cap.capabilities & V4L2_CAP_VIDEO_CAPTURE_MPLANE ? '*' : ' ');
-	info("  [%c] V4L2_CAP_VIDEO_OUTPUT",
-	     cap.capabilities & V4L2_CAP_VIDEO_OUTPUT ? '*' : ' ');
-	info("  [%c] V4L2_CAP_VIDEO_OUTPUT_MPLANE",
-	     cap.capabilities & V4L2_CAP_VIDEO_OUTPUT_MPLANE ? '*' : ' ');
-	info("  [%c] V4L2_CAP_VIDEO_M2M",
-	     cap.capabilities & V4L2_CAP_VIDEO_M2M ? '*' : ' ');
-	info("  [%c] V4L2_CAP_VIDEO_M2M_MPLANE",
-	     cap.capabilities & V4L2_CAP_VIDEO_M2M_MPLANE ? '*' : ' ');
-	info("  [%c] V4L2_CAP_VIDEO_OVERLAY",
-	     cap.capabilities & V4L2_CAP_VIDEO_OVERLAY ? '*' : ' ');
-	info("  [%c] V4L2_CAP_VBI_CAPTURE",
-	     cap.capabilities & V4L2_CAP_VBI_CAPTURE ? '*' : ' ');
-	info("  [%c] V4L2_CAP_VBI_OUTPUT",
-	     cap.capabilities & V4L2_CAP_VBI_OUTPUT ? '*' : ' ');
-	info("  [%c] V4L2_CAP_SLICED_VBI_CAPTURE",
-	     cap.capabilities & V4L2_CAP_SLICED_VBI_CAPTURE ? '*' : ' ');
-	info("  [%c] V4L2_CAP_SLICED_VBI_OUTPUT",
-	     cap.capabilities & V4L2_CAP_SLICED_VBI_OUTPUT ? '*' : ' ');
-	info("  [%c] V4L2_CAP_RDS_CAPTURE",
-	     cap.capabilities & V4L2_CAP_RDS_CAPTURE ? '*' : ' ');
-	info("  [%c] V4L2_CAP_VIDEO_OUTPUT_OVERLAY",
-	     cap.capabilities & V4L2_CAP_VIDEO_OUTPUT_OVERLAY ? '*' : ' ');
-	info("  [%c] V4L2_CAP_HW_FREQ_SEEK",
-	     cap.capabilities & V4L2_CAP_HW_FREQ_SEEK ? '*' : ' ');
-	info("  [%c] V4L2_CAP_RDS_OUTPUT",
-	     cap.capabilities & V4L2_CAP_RDS_OUTPUT ? '*' : ' ');
-	info("  [%c] V4L2_CAP_TUNER",
-	     cap.capabilities & V4L2_CAP_TUNER ? '*' : ' ');
-	info("  [%c] V4L2_CAP_AUDIO",
-	     cap.capabilities & V4L2_CAP_AUDIO ? '*' : ' ');
-	info("  [%c] V4L2_CAP_RADIO",
-	     cap.capabilities & V4L2_CAP_RADIO ? '*' : ' ');
-	info("  [%c] V4L2_CAP_MODULATOR",
-	     cap.capabilities & V4L2_CAP_MODULATOR ? '*' : ' ');
-	info("  [%c] V4L2_CAP_SDR_CAPTURE",
-	     cap.capabilities & V4L2_CAP_SDR_CAPTURE ? '*' : ' ');
-	info("  [%c] V4L2_CAP_EXT_PIX_FORMAT",
-	     cap.capabilities & V4L2_CAP_EXT_PIX_FORMAT ? '*' : ' ');
-	info("  [%c] V4L2_CAP_READWRITE",
-	     cap.capabilities & V4L2_CAP_READWRITE ? '*' : ' ');
-	info("  [%c] V4L2_CAP_ASYNCIO",
-	     cap.capabilities & V4L2_CAP_ASYNCIO ? '*' : ' ');
-	info("  [%c] V4L2_CAP_STREAMING",
-	     cap.capabilities & V4L2_CAP_STREAMING ? '*' : ' ');
+	dbg("  [%c] V4L2_CAP_VIDEO_CAPTURE",
+	    cap.capabilities & V4L2_CAP_VIDEO_CAPTURE ? '*' : ' ');
+	dbg("  [%c] V4L2_CAP_VIDEO_CAPTURE_MPLANE",
+	    cap.capabilities & V4L2_CAP_VIDEO_CAPTURE_MPLANE ? '*' : ' ');
+	dbg("  [%c] V4L2_CAP_VIDEO_OUTPUT",
+	    cap.capabilities & V4L2_CAP_VIDEO_OUTPUT ? '*' : ' ');
+	dbg("  [%c] V4L2_CAP_VIDEO_OUTPUT_MPLANE",
+	    cap.capabilities & V4L2_CAP_VIDEO_OUTPUT_MPLANE ? '*' : ' ');
+	dbg("  [%c] V4L2_CAP_VIDEO_M2M",
+	    cap.capabilities & V4L2_CAP_VIDEO_M2M ? '*' : ' ');
+	dbg("  [%c] V4L2_CAP_VIDEO_M2M_MPLANE",
+	    cap.capabilities & V4L2_CAP_VIDEO_M2M_MPLANE ? '*' : ' ');
+	dbg("  [%c] V4L2_CAP_VIDEO_OVERLAY",
+	    cap.capabilities & V4L2_CAP_VIDEO_OVERLAY ? '*' : ' ');
+	dbg("  [%c] V4L2_CAP_VBI_CAPTURE",
+	    cap.capabilities & V4L2_CAP_VBI_CAPTURE ? '*' : ' ');
+	dbg("  [%c] V4L2_CAP_VBI_OUTPUT",
+	    cap.capabilities & V4L2_CAP_VBI_OUTPUT ? '*' : ' ');
+	dbg("  [%c] V4L2_CAP_SLICED_VBI_CAPTURE",
+	    cap.capabilities & V4L2_CAP_SLICED_VBI_CAPTURE ? '*' : ' ');
+	dbg("  [%c] V4L2_CAP_SLICED_VBI_OUTPUT",
+	    cap.capabilities & V4L2_CAP_SLICED_VBI_OUTPUT ? '*' : ' ');
+	dbg("  [%c] V4L2_CAP_RDS_CAPTURE",
+	    cap.capabilities & V4L2_CAP_RDS_CAPTURE ? '*' : ' ');
+	dbg("  [%c] V4L2_CAP_VIDEO_OUTPUT_OVERLAY",
+	    cap.capabilities & V4L2_CAP_VIDEO_OUTPUT_OVERLAY ? '*' : ' ');
+	dbg("  [%c] V4L2_CAP_HW_FREQ_SEEK",
+	    cap.capabilities & V4L2_CAP_HW_FREQ_SEEK ? '*' : ' ');
+	dbg("  [%c] V4L2_CAP_RDS_OUTPUT",
+	    cap.capabilities & V4L2_CAP_RDS_OUTPUT ? '*' : ' ');
+	dbg("  [%c] V4L2_CAP_TUNER",
+	    cap.capabilities & V4L2_CAP_TUNER ? '*' : ' ');
+	dbg("  [%c] V4L2_CAP_AUDIO",
+	    cap.capabilities & V4L2_CAP_AUDIO ? '*' : ' ');
+	dbg("  [%c] V4L2_CAP_RADIO",
+	    cap.capabilities & V4L2_CAP_RADIO ? '*' : ' ');
+	dbg("  [%c] V4L2_CAP_MODULATOR",
+	    cap.capabilities & V4L2_CAP_MODULATOR ? '*' : ' ');
+	dbg("  [%c] V4L2_CAP_SDR_CAPTURE",
+	    cap.capabilities & V4L2_CAP_SDR_CAPTURE ? '*' : ' ');
+	dbg("  [%c] V4L2_CAP_EXT_PIX_FORMAT",
+	    cap.capabilities & V4L2_CAP_EXT_PIX_FORMAT ? '*' : ' ');
+	dbg("  [%c] V4L2_CAP_READWRITE",
+	    cap.capabilities & V4L2_CAP_READWRITE ? '*' : ' ');
+	dbg("  [%c] V4L2_CAP_ASYNCIO",
+	    cap.capabilities & V4L2_CAP_ASYNCIO ? '*' : ' ');
+	dbg("  [%c] V4L2_CAP_STREAMING",
+	    cap.capabilities & V4L2_CAP_STREAMING ? '*' : ' ');
 
 	if (!(cap.capabilities & V4L2_CAP_VIDEO_CAPTURE_MPLANE) ||
 	    !(cap.capabilities & V4L2_CAP_VIDEO_OUTPUT_MPLANE) ||
@@ -285,21 +295,49 @@ int video_set_dpb(struct instance *i,
 	return 0;
 }
 
+static int video_count_capture_queued_bufs(struct video *vid)
+{
+	int cap_queued = 0;
+
+	for (int idx = 0; idx < vid->cap_buf_cnt; idx++) {
+		if (vid->cap_buf_flag[idx])
+			cap_queued++;
+	}
+
+	return cap_queued;
+}
+
+static int video_count_output_queued_bufs(struct video *vid)
+{
+	int out_queued = 0;
+
+	for (int idx = 0; idx < vid->out_buf_cnt; idx++) {
+		if (vid->out_buf_flag[idx])
+			out_queued++;
+	}
+
+	return out_queued;
+}
+
 int video_queue_buf_out(struct instance *i, int n, int length,
 			uint32_t flags, struct timeval timestamp)
 {
 	struct video *vid = &i->video;
+	enum v4l2_buf_type type;
 	struct v4l2_buffer buf;
 	struct v4l2_plane planes[1];
 
+	type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+
 	if (n >= vid->out_buf_cnt) {
-		err("Tried to queue a non existing buffer");
+		err("tried to queue a non existing %s buffer",
+		    buf_type_to_string(type));
 		return -1;
 	}
 
 	memzero(buf);
 	memset(planes, 0, sizeof(planes));
-	buf.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+	buf.type = type;
 	buf.memory = V4L2_MEMORY_USERPTR;
 	buf.index = n;
 	buf.length = 1;
@@ -316,15 +354,16 @@ int video_queue_buf_out(struct instance *i, int n, int length,
 	buf.timestamp = timestamp;
 
 	if (ioctl(vid->fd, VIDIOC_QBUF, &buf) < 0) {
-		err("Failed to queue buffer (index=%d) on OUTPUT: %m",
-		    buf.index);
+		err("failed to queue %s buffer (index=%d): %m",
+		    buf_type_to_string(buf.type), buf.index);
 		return -1;
 	}
 
-	dbg("Queued buffer on OUTPUT queue with index %d "
-	    "(flags:%08x, bytesused:%d, ts: %ld.%lu)",
-	    buf.index, buf.flags, buf.m.planes[0].bytesused,
-	    buf.timestamp.tv_sec, buf.timestamp.tv_usec);
+	dbg("%s: queued buffer %d (flags:%08x, bytesused:%d, ts: %ld.%lu), "
+	    "%d/%d queued", buf_type_to_string(buf.type), buf.index, buf.flags,
+	    buf.m.planes[0].bytesused, buf.timestamp.tv_sec,
+	    buf.timestamp.tv_usec, video_count_output_queued_bufs(vid),
+	    vid->out_buf_cnt);
 
 	return 0;
 }
@@ -332,17 +371,21 @@ int video_queue_buf_out(struct instance *i, int n, int length,
 int video_queue_buf_cap(struct instance *i, int n)
 {
 	struct video *vid = &i->video;
+	enum v4l2_buf_type type;
 	struct v4l2_buffer buf;
 	struct v4l2_plane planes[2];
 
+	type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+
 	if (n >= vid->cap_buf_cnt) {
-		err("Tried to queue a non existing buffer");
+		err("tried to queue a non existing %s buffer",
+		    buf_type_to_string(type));
 		return -1;
 	}
 
 	memzero(buf);
 	memset(planes, 0, sizeof(planes));
-	buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+	buf.type = type;
 	buf.memory = V4L2_MEMORY_USERPTR;
 	buf.index = n;
 	buf.length = 2;
@@ -363,14 +406,15 @@ int video_queue_buf_cap(struct instance *i, int n)
 	buf.m.planes[1].data_offset = 0;
 
 	if (ioctl(vid->fd, VIDIOC_QBUF, &buf) < 0) {
-		err("Failed to queue buffer (index=%d) on CAPTURE: %m",
-		    buf.index);
+		err("failed to queue %s buffer (index=%d): %m",
+		    buf_type_to_string(buf.type), buf.index);
 		return -1;
 	}
 
-	dbg("Queued buffer on CAPTURE queue with index %d", buf.index);
-
 	vid->cap_buf_flag[n] = 1;
+
+	dbg("%s: queued buffer %d, %d/%d queued", buf_type_to_string(buf.type),
+	    buf.index, video_count_capture_queued_bufs(vid), vid->cap_buf_cnt);
 
 	return 0;
 }
@@ -382,22 +426,24 @@ static int video_dequeue_buf(struct instance *i, struct v4l2_buffer *buf)
 
 	ret = ioctl(vid->fd, VIDIOC_DQBUF, buf);
 	if (ret < 0) {
-		err("Failed to dequeue buffer on %s: %m",
-		    dbg_type[buf->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE]);
+		err("failed to dequeue buffer on %s queue: %m",
+		    buf_type_to_string(buf->type));
 		return -errno;
 	}
 
 	switch (buf->type) {
 	case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
-		dbg("Dequeued buffer on OUTPUT queue with index %d",
-		    buf->index);
+		dbg("%s: dequeued buffer %d, %d/%d queued",
+		    buf_type_to_string(buf->type), buf->index,
+		    video_count_output_queued_bufs(vid), vid->out_buf_cnt);
 		break;
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
 		vid->cap_buf_flag[buf->index] = 0;
-		dbg("Dequeued buffer on CAPTURE queue with index %d "
-		    "(flags:%08x, bytesused:%d, ts: %ld.%lu)",
+		dbg("%s: dequeued buffer %d (flags:%08x, bytesused:%d, "
+		    "ts: %ld.%lu), %d/%d queued", buf_type_to_string(buf->type),
 		    buf->index, buf->flags, buf->m.planes[0].bytesused,
-		    buf->timestamp.tv_sec, buf->timestamp.tv_usec);
+		    buf->timestamp.tv_sec, buf->timestamp.tv_usec,
+		    video_count_capture_queued_bufs(vid), vid->cap_buf_cnt);
 		break;
 	}
 
@@ -461,14 +507,14 @@ int video_stream(struct instance *i, enum v4l2_buf_type type, int status)
 
 	ret = ioctl(vid->fd, status, &type);
 	if (ret) {
-		err("Failed to change streaming (type=%s, status=%s)",
-		    dbg_type[type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE],
-		    dbg_status[status == VIDIOC_STREAMOFF]);
+		err("failed to stream on %s queue (status=%d)",
+		    buf_type_to_string(type), status);
 		return -1;
 	}
 
-	dbg("Stream %s on %s queue", dbg_status[status==VIDIOC_STREAMOFF],
-	    dbg_type[type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE]);
+	dbg("%s: stream %s", buf_type_to_string(type),
+	    status == VIDIOC_STREAMON ? "ON" :
+	    status == VIDIOC_STREAMOFF ? "OFF" : "??");
 
 	return 0;
 }
@@ -558,6 +604,7 @@ static int get_msm_color_format(uint32_t fourcc)
 int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 {
 	struct video *vid = &i->video;
+	enum v4l2_buf_type type;
 	struct v4l2_format fmt;
 	struct v4l2_requestbuffers reqbuf;
 	int buffer_size;
@@ -566,8 +613,10 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 	void *buf_addr;
 	int n;
 
+	type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+
 	memzero(fmt);
-	fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+	fmt.type = type;
 	fmt.fmt.pix_mp.height = h;
 	fmt.fmt.pix_mp.width = w;
 #if 0
@@ -577,27 +626,29 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 #endif
 
 	if (ioctl(vid->fd, VIDIOC_S_FMT, &fmt) < 0) {
-		err("Failed to set format (%dx%d)", w, h);
+		err("failed to set %s format (%dx%d)",
+		    buf_type_to_string(fmt.type), w, h);
 		return -1;
 	}
 
 	memzero(reqbuf);
 	reqbuf.count = num_buffers;
-	reqbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+	reqbuf.type = type;
 	reqbuf.memory = V4L2_MEMORY_USERPTR;
 
 	if (ioctl(vid->fd, VIDIOC_REQBUFS, &reqbuf) < 0) {
-		err("REQBUFS failed on CAPTURE queue: %m");
+		err("failed to request %s buffers: %m",
+		    buf_type_to_string(type));
 		return -1;
 	}
 
-	dbg("Number of CAPTURE buffers is %d (requested %d)",
-	    reqbuf.count, num_buffers);
+	dbg("%s: requested %d buffers, got %d", buf_type_to_string(type),
+	    num_buffers, reqbuf.count);
 
 	vid->cap_buf_cnt = reqbuf.count;
 
 	if (ioctl(vid->fd, VIDIOC_G_FMT, &fmt) < 0) {
-		err("Failed to get format");
+		err("failed to get %s format", buf_type_to_string(type));
 		return -1;
 	}
 
@@ -617,7 +668,7 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 
 	color_fmt = get_msm_color_format(fmt.fmt.pix_mp.pixelformat);
 	if (color_fmt < 0) {
-		err("unhandled output pixel format");
+		err("unhandled %s pixel format", buf_type_to_string(type));
 		return -1;
 	}
 
@@ -646,7 +697,7 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 	buf_addr = mmap(NULL, vid->cap_buf_cnt * vid->cap_buf_size[0],
 			PROT_READ, MAP_SHARED, ion_fd, 0);
 	if (buf_addr == MAP_FAILED) {
-		err("Failed to map output buffer: %m");
+		err("failed to map %s buffer: %m", buf_type_to_string(type));
 		return -1;
 	}
 
@@ -658,7 +709,8 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 		vid->cap_buf_addr[n][0] = buf_addr + vid->cap_buf_off[n][0];
 	}
 
-	dbg("Succesfully mmapped %d CAPTURE buffers", n);
+	dbg("%s: succesfully mmapped %d buffers", buf_type_to_string(type),
+	    vid->cap_buf_cnt);
 
 	return 0;
 }
@@ -666,21 +718,25 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 int video_stop_capture(struct instance *i)
 {
 	struct video *vid = &i->video;
+	enum v4l2_buf_type type;
 	struct v4l2_requestbuffers reqbuf;
 
-	if (video_stream(i, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE,
-			 VIDIOC_STREAMOFF))
+	type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+
+	if (video_stream(i, type, VIDIOC_STREAMOFF))
 		return -1;
 
 	if (vid->cap_ion_addr) {
 		if (munmap(vid->cap_ion_addr,
 			   vid->cap_buf_cnt * vid->cap_buf_size[0]))
-			err("failed to unmap buffer: %m");
+			err("failed to unmap %s buffer: %m",
+			    buf_type_to_string(type));
 	}
 
 	if (vid->cap_ion_fd >= 0) {
 		if (close(vid->cap_ion_fd) < 0)
-			err("failed to close ion buffer: %m");
+			err("failed to close %s ion buffer: %m",
+			    buf_type_to_string(type));
 	}
 
 	vid->cap_ion_fd = -1;
@@ -689,15 +745,13 @@ int video_stop_capture(struct instance *i)
 
 	memzero(reqbuf);
 	reqbuf.memory = V4L2_MEMORY_USERPTR;
-	reqbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+	reqbuf.type = type;
 
 	if (ioctl(vid->fd, VIDIOC_REQBUFS, &reqbuf) < 0) {
-		err("REQBUFS with count=0 on CAPTURE queue failed: %m");
+		err("REQBUFS with count=0 on %s queue failed: %m",
+		    buf_type_to_string(type));
 		return -1;
 	}
-
-	return 0;
-}
 
 	return 0;
 }
@@ -706,42 +760,46 @@ int video_setup_output(struct instance *i, unsigned long codec,
 		       unsigned int size, int count)
 {
 	struct video *vid = &i->video;
+	enum v4l2_buf_type type;
 	struct v4l2_format fmt;
 	struct v4l2_requestbuffers reqbuf;
 	int ion_fd;
 	void *buf_addr;
 	int n;
 
+	type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+
 	memzero(fmt);
-	fmt.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+	fmt.type = type;
 	fmt.fmt.pix_mp.width = i->width;
 	fmt.fmt.pix_mp.height = i->height;
 	fmt.fmt.pix_mp.pixelformat = codec;
 
 	if (ioctl(vid->fd, VIDIOC_S_FMT, &fmt) < 0) {
-		err("Failed to set format on OUTPUT: %m");
+		err("failed to set %s format: %m", buf_type_to_string(type));
 		return -1;
 	}
 
-	dbg("Setup decoding OUTPUT buffer size=%u (requested=%u)",
+	dbg("%s: setup buffer size=%u (requested=%u)", buf_type_to_string(type),
 	    fmt.fmt.pix_mp.plane_fmt[0].sizeimage, size);
 
 	vid->out_buf_size = fmt.fmt.pix_mp.plane_fmt[0].sizeimage;
 
 	memzero(reqbuf);
 	reqbuf.count = count;
-	reqbuf.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+	reqbuf.type = type;
 	reqbuf.memory = V4L2_MEMORY_USERPTR;
 
 	if (ioctl(vid->fd, VIDIOC_REQBUFS, &reqbuf) < 0) {
-		err("REQBUFS failed on OUTPUT queue");
+		err("failed to request %s buffers: %m",
+		    buf_type_to_string(type));
 		return -1;
 	}
 
 	vid->out_buf_cnt = reqbuf.count;
 
-	dbg("Number of video decoder OUTPUT buffers is %d (requested %d)",
-	    vid->out_buf_cnt, count);
+	dbg("%s: requested %d buffers, got %d", buf_type_to_string(type),
+	    count, reqbuf.count);
 
 	ion_fd = alloc_ion_buffer(i, vid->out_buf_cnt * vid->out_buf_size);
 	if (ion_fd < 0)
@@ -750,7 +808,7 @@ int video_setup_output(struct instance *i, unsigned long codec,
 	buf_addr = mmap(NULL, vid->out_buf_cnt * vid->out_buf_size,
 			PROT_READ | PROT_WRITE, MAP_SHARED, ion_fd, 0);
 	if (buf_addr == MAP_FAILED) {
-		err("Failed to map output buffer: %m");
+		err("failed to map %s buffer: %m", buf_type_to_string(type));
 		return -1;
 	}
 
@@ -763,7 +821,8 @@ int video_setup_output(struct instance *i, unsigned long codec,
 		vid->out_buf_flag[n] = 0;
 	}
 
-	dbg("Succesfully mmapped %d OUTPUT buffers", n);
+	dbg("%s: succesfully mmapped %d buffers", buf_type_to_string(type),
+	    vid->out_buf_cnt);
 
 	return 0;
 }
@@ -771,21 +830,25 @@ int video_setup_output(struct instance *i, unsigned long codec,
 int video_stop_output(struct instance *i)
 {
 	struct video *vid = &i->video;
+	enum v4l2_buf_type type;
 	struct v4l2_requestbuffers reqbuf;
 
-	if (video_stream(i, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE,
-			 VIDIOC_STREAMOFF))
+	type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+
+	if (video_stream(i, type, VIDIOC_STREAMOFF))
 		return -1;
 
 	if (vid->out_ion_addr) {
 		if (munmap(vid->out_ion_addr,
 			   vid->out_buf_cnt * vid->out_buf_size))
-			err("failed to unmap buffer: %m");
+			err("failed to unmap %s buffer: %m",
+			    buf_type_to_string(type));
 	}
 
 	if (vid->out_ion_fd >= 0) {
 		if (close(vid->out_ion_fd) < 0)
-			err("failed to close ion buffer: %m");
+			err("failed to close %s ion buffer: %m",
+			    buf_type_to_string(type));
 	}
 
 	vid->out_ion_fd = -1;
@@ -794,10 +857,11 @@ int video_stop_output(struct instance *i)
 
 	memzero(reqbuf);
 	reqbuf.memory = V4L2_MEMORY_USERPTR;
-	reqbuf.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+	reqbuf.type = type;
 
 	if (ioctl(vid->fd, VIDIOC_REQBUFS, &reqbuf) < 0) {
-		err("REQBUFS with count=0 on OUTPUT queue failed: %m");
+		err("REQBUFS with count=0 on %s queue failed: %m",
+		    buf_type_to_string(type));
 		return -1;
 	}
 
