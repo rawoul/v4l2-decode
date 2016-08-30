@@ -102,6 +102,7 @@ struct video {
 struct instance {
 	int width;
 	int height;
+	int fullscreen;
 	uint32_t fourcc;
 	int save_frames;
 	int decode_order;

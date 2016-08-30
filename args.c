@@ -50,17 +50,20 @@ int parse_args(struct instance *i, int argc, char **argv)
 
 	debug_level = 2;
 
-	while ((c = getopt(argc, argv, "dhm:f:qv")) != -1) {
+	while ((c = getopt(argc, argv, "dfhm:o:qv")) != -1) {
 		switch (c) {
 		case 'm':
 			i->video.name = optarg;
 			break;
-		case 'f':
+		case 'o':
 			i->save_frames = 1;
 			i->save_path = optarg;
 			break;
 		case 'd':
 			i->decode_order = 1;
+			break;
+		case 'f':
+			i->fullscreen = 1;
 			break;
 		case 'q':
 			debug_level = 0;

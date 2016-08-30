@@ -687,6 +687,9 @@ setup_display(struct instance *i)
 	ar = av_guess_sample_aspect_ratio(i->avctx, i->stream, NULL);
 	window_set_aspect_ratio(i->window, ar.num, ar.den);
 
+	if (i->fullscreen)
+		window_toggle_fullscreen(i->window);
+
 	return 0;
 }
 
