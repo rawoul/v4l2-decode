@@ -696,20 +696,6 @@ int video_stop_capture(struct instance *i)
 	return 0;
 }
 
-static int video_set_framerate(struct instance *i, int num, int den)
-{
-	struct v4l2_streamparm parm;
-
-	memzero(parm);
-	parm.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
-	parm.parm.output.timeperframe.numerator = den;
-	parm.parm.output.timeperframe.denominator = num;
-
-	if (ioctl(i->video.fd, VIDIOC_S_PARM, &parm) < 0) {
-		err("Failed to set framerate on OUTPUT: %m");
-		return -1;
-	}
-
 	return 0;
 }
 
@@ -775,8 +761,6 @@ int video_setup_output(struct instance *i, unsigned long codec,
 	}
 
 	dbg("Succesfully mmapped %d OUTPUT buffers", n);
-
-	video_set_framerate(i, 25, 1);
 
 	return 0;
 }
