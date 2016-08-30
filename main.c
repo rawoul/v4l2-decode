@@ -735,6 +735,14 @@ stream_open(struct instance *i)
 		goto fail;
 	}
 
+	ret = avformat_find_stream_info(i->avctx, NULL);
+	if (ret < 0) {
+		av_err(ret, "failed to get streams info");
+		goto fail;
+	}
+
+	av_dump_format(i->avctx, -1, i->url, 0);
+
 	ret = av_find_best_stream(i->avctx, AVMEDIA_TYPE_VIDEO, -1, -1,
 				  NULL, 0);
 	if (ret < 0) {
@@ -744,14 +752,6 @@ stream_open(struct instance *i)
 
 	i->stream = i->avctx->streams[ret];
 	codecpar = i->stream->codecpar;
-
-	if (codecpar->width == 0 || codecpar->height == 0) {
-		ret = avformat_find_stream_info(i->avctx, NULL);
-		if (ret < 0) {
-			av_err(ret, "failed to get streams info");
-			goto fail;
-		}
-	}
 
 	i->width = codecpar->width;
 	i->height = codecpar->height;
@@ -814,8 +814,6 @@ stream_open(struct instance *i)
 			goto fail;
 		}
 	}
-
-	av_dump_format(i->avctx, i->stream->index, i->url, 0);
 
 	return 0;
 
