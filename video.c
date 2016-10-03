@@ -567,8 +567,8 @@ int video_dequeue_output(struct instance *i, int *n)
 	return 0;
 }
 
-int video_dequeue_capture(struct instance *i, int *n, int *finished,
-			  unsigned int *bytesused, struct timeval *ts)
+int video_dequeue_capture(struct instance *i, int *n, unsigned int *bytesused,
+			  uint32_t *flags, struct timeval *ts)
 {
 	struct v4l2_buffer buf;
 	struct v4l2_plane planes[CAP_PLANES];
@@ -582,14 +582,11 @@ int video_dequeue_capture(struct instance *i, int *n, int *finished,
 	if (video_dequeue_buf(i, &buf))
 		return -1;
 
-	*finished = 0;
-
-	if (buf.flags & V4L2_QCOM_BUF_FLAG_EOS)
-		*finished = 1;
-
 	*bytesused = buf.m.planes[0].bytesused;
 	*n = buf.index;
 
+	if (flags)
+		*flags = buf.flags;
 	if (ts)
 		*ts = buf.timestamp;
 

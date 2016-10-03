@@ -68,8 +68,8 @@ int video_flush(struct instance *i, uint32_t flags);
 /* Dequeue a buffer, the structure *buf is used to return the parameters of the
  * dequeued buffer. */
 int video_dequeue_output(struct instance *i, int *n);
-int video_dequeue_capture(struct instance *i, int *n, int *finished,
-			  unsigned int *bytesused, struct timeval *ts);
+int video_dequeue_capture(struct instance *i, int *n, unsigned int *bytesused,
+			  uint32_t *flags, struct timeval *ts);
 
 /* Dequeue a pending event */
 int video_dequeue_event(struct instance *i, struct v4l2_event *ev);

@@ -32,6 +32,7 @@
 #include <libavcodec/avcodec.h>
 
 #include "display.h"
+#include "list.h"
 
 extern int debug_level;
 
@@ -97,6 +98,11 @@ struct video {
 	int cap_buf_flag[MAX_CAP_BUF];
 	int cap_ion_fd;
 	void *cap_ion_addr;
+
+	/* timestamp list for all pending frames */
+	struct list_head pending_ts_list;
+	uint64_t cap_last_pts;
+	uint64_t pts_dts_delta;
 
 	unsigned long total_captured;
 };

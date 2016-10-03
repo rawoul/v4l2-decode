@@ -275,6 +275,43 @@ save_frame(struct instance *i, const void *buf, unsigned int size)
 	return 0;
 }
 
+struct ts_entry {
+	uint64_t pts;
+	uint64_t dts;
+	uint64_t duration;
+	uint64_t base;
+	struct list_head link;
+};
+
+#define TIMESTAMP_NONE	((uint64_t)-1)
+
+static struct ts_entry *
+ts_insert(struct video *vid, uint64_t pts, uint64_t dts, uint64_t duration,
+	  uint64_t base)
+{
+	struct ts_entry *l;
+
+	l = malloc(sizeof (*l));
+	if (!l)
+		return NULL;
+
+	l->pts = pts;
+	l->dts = dts;
+	l->duration = duration;
+	l->base = base;
+
+	list_add_tail(&l->link, &vid->pending_ts_list);
+
+	return l;
+}
+
+static void
+ts_remove(struct ts_entry *l)
+{
+	list_del(&l->link);
+	free(l);
+}
+
 static int
 parse_frame(struct instance *i, AVPacket *pkt)
 {
@@ -344,32 +381,64 @@ send_pkt(struct instance *i, int buf_index, AVPacket *pkt)
 {
 	struct video *vid = &i->video;
 	struct timeval tv;
+	uint64_t pts, dts, duration, start_time;
 	int flags;
+	AVRational vid_timebase;
+	AVRational v4l_timebase = { 1, 1000000 };
 
 	memcpy(vid->out_buf_addr[buf_index], pkt->data, pkt->size);
 	flags = 0;
 
-	if (pkt->pts != AV_NOPTS_VALUE) {
-		AVRational vid_timebase;
-		AVRational v4l_timebase = { 1, 1000000 };
-		int64_t v4l_pts;
+	if (i->bsf)
+		vid_timebase = i->bsf->time_base_out;
+	else
+		vid_timebase = i->stream->time_base;
 
-		if (i->bsf)
-			vid_timebase = i->bsf->time_base_out;
-		else
-			vid_timebase = i->stream->time_base;
+	start_time = 0;
+	if (i->stream->start_time != AV_NOPTS_VALUE)
+		start_time = av_rescale_q(i->stream->start_time,
+					  vid_timebase, v4l_timebase);
 
-		v4l_pts = av_rescale_q(pkt->pts, vid_timebase, v4l_timebase);
-		tv.tv_sec = v4l_pts / 1000000;
-		tv.tv_usec = v4l_pts % 1000000;
+	info("input pts=%" PRIi64 " dts=%" PRIi64 " duration=%" PRIu64
+	     " start_time=%" PRIi64, pkt->pts, pkt->dts, pkt->duration,
+	     i->stream->start_time);
+
+	pts = TIMESTAMP_NONE;
+	if (pkt->pts != AV_NOPTS_VALUE)
+		pts = av_rescale_q(pkt->pts, vid_timebase, v4l_timebase);
+
+	dts = TIMESTAMP_NONE;
+	if (pkt->dts != AV_NOPTS_VALUE)
+		dts = av_rescale_q(pkt->dts, vid_timebase, v4l_timebase);
+
+	duration = TIMESTAMP_NONE;
+	if (pkt->duration) {
+		duration = av_rescale_q(pkt->duration,
+					vid_timebase, v4l_timebase);
+	}
+
+	if (pts != TIMESTAMP_NONE) {
+		tv.tv_sec = pts / 1000000;
+		tv.tv_usec = pts % 1000000;
 	} else {
 		flags |= V4L2_QCOM_BUF_TIMESTAMP_INVALID;
 		tv.tv_sec = 0;
 		tv.tv_usec = 0;
 	}
 
+	if ((pkt->flags & AV_PKT_FLAG_KEY) &&
+	    pts != TIMESTAMP_NONE && dts != TIMESTAMP_NONE)
+		vid->pts_dts_delta = pts - dts;
+
 	if (video_queue_buf_out(i, buf_index, pkt->size, flags, tv) < 0)
 		return -1;
+
+	info("input pts=%" PRIi64 " dts=%" PRIi64 " duration=%" PRIu64,
+	     pts, dts, duration);
+
+	pthread_mutex_lock(&i->lock);
+	ts_insert(vid, pts, dts, duration, start_time);
+	pthread_mutex_unlock(&i->lock);
 
 	vid->out_buf_flag[buf_index] = 1;
 
@@ -462,23 +531,81 @@ handle_video_capture(struct instance *i)
 {
 	struct video *vid = &i->video;
 	struct timeval tv;
+	uint32_t flags;
+	uint64_t pts;
 	unsigned int bytesused;
-	int ret, n, finished;
+	int ret, n;
 
 	/* capture buffer is ready */
 
-	ret = video_dequeue_capture(i, &n, &finished,
-				    &bytesused, &tv);
+	ret = video_dequeue_capture(i, &n, &bytesused, &flags, &tv);
 	if (ret < 0) {
 		err("dequeue capture buffer fail");
 		return ret;
 	}
 
+	if (flags & V4L2_QCOM_BUF_TIMESTAMP_INVALID)
+		pts = TIMESTAMP_NONE;
+	else
+		pts = ((uint64_t)tv.tv_sec) * 1000000 + tv.tv_usec;
+
 	if (bytesused > 0) {
+		struct ts_entry *l, *min = NULL;
+		int pending = 0;
+
 		vid->total_captured++;
 
 		save_frame(i, (void *)vid->cap_buf_addr[n][0],
 			   bytesused);
+
+		pthread_mutex_lock(&i->lock);
+
+		/* PTS are expected to be monotonically increasing,
+		 * so when unknown use the lowest pending DTS */
+		list_for_each_entry(l, &vid->pending_ts_list, link) {
+			if (l->dts == TIMESTAMP_NONE)
+				continue;
+			if (min == NULL || min->dts > l->dts)
+				min = l;
+			pending++;
+		}
+
+		if (min) {
+			info("pending %d min pts %" PRIi64
+			     " dts %" PRIi64
+			     " duration %" PRIi64, pending,
+			     min->pts, min->dts, min->duration);
+		}
+
+		if (pts == TIMESTAMP_NONE) {
+			info("no pts on frame");
+			if (min && vid->pts_dts_delta != TIMESTAMP_NONE) {
+				info("reuse dts %" PRIu64
+				     " delta %" PRIu64,
+				     min->dts, vid->pts_dts_delta);
+				pts = min->dts + vid->pts_dts_delta;
+			}
+		}
+
+		if (pts == TIMESTAMP_NONE) {
+			if (min && vid->cap_last_pts != TIMESTAMP_NONE)
+				pts = vid->cap_last_pts + min->duration;
+			else
+				pts = 0;
+
+			info("guessing pts %" PRIu64, pts);
+		}
+
+		vid->cap_last_pts = pts;
+
+		if (min != NULL) {
+			pts -= min->base;
+			ts_remove(min);
+		}
+
+		pthread_mutex_unlock(&i->lock);
+
+		info("show buffer pts=%" PRIu64, pts);
 
 		window_show_buffer(i->window, i->disp_buffers[n],
 				   buffer_released, i);
@@ -486,10 +613,11 @@ handle_video_capture(struct instance *i)
 		i->prerolled = 1;
 
 	} else if (!i->reconfigure_pending) {
+		info("drop buffer");
 		video_queue_buf_cap(i, n);
 	}
 
-	if (finished) {
+	if (flags & V4L2_QCOM_BUF_FLAG_EOS) {
 		info("End of stream");
 		finish(i);
 	}
@@ -865,6 +993,10 @@ int main(int argc, char **argv)
 	inst.sigfd = -1;
 	pthread_mutex_init(&inst.lock, 0);
 	pthread_cond_init(&inst.cond, 0);
+
+	INIT_LIST_HEAD(&inst.video.pending_ts_list);
+	inst.video.pts_dts_delta = TIMESTAMP_NONE;
+	inst.video.cap_last_pts = TIMESTAMP_NONE;
 
 	ret = stream_open(&inst);
 	if (ret)
