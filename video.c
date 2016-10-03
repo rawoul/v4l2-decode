@@ -42,6 +42,62 @@
 
 #define CASE(ENUM) case ENUM: return #ENUM;
 
+static const struct {
+	uint32_t mask;
+	const char *str;
+} v4l2_buf_flags[] = {
+	{ V4L2_BUF_FLAG_MAPPED, "MAPPED" },
+	{ V4L2_BUF_FLAG_QUEUED, "QUEUED" },
+	{ V4L2_BUF_FLAG_DONE, "DONE" },
+	{ V4L2_BUF_FLAG_KEYFRAME, "KEYFRAME" },
+	{ V4L2_BUF_FLAG_PFRAME, "PFRAME" },
+	{ V4L2_BUF_FLAG_BFRAME, "BFRAME" },
+	{ V4L2_BUF_FLAG_ERROR, "ERROR" },
+	{ V4L2_BUF_FLAG_TIMECODE, "TIMECODE" },
+	{ V4L2_BUF_FLAG_PREPARED, "PREPARED" },
+	{ V4L2_BUF_FLAG_NO_CACHE_INVALIDATE, "NO_CACHE_INVALIDATE" },
+	{ V4L2_BUF_FLAG_NO_CACHE_CLEAN, "NO_CACHE_CLEAN" },
+	{ V4L2_BUF_FLAG_TIMESTAMP_UNKNOWN, "TIMESTAMP_UNKNOWN" },
+	{ V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC, "TIMESTAMP_MONOTONIC" },
+	{ V4L2_BUF_FLAG_TIMESTAMP_COPY, "TIMESTAMP_COPY" },
+	{ V4L2_BUF_FLAG_TSTAMP_SRC_EOF, "TSTAMP_SRC_EOF" },
+	{ V4L2_BUF_FLAG_TSTAMP_SRC_SOE, "TSTAMP_SRC_SOE" },
+	{ V4L2_QCOM_BUF_FLAG_CODECCONFIG, "QCOM_CODECCONFIG" },
+	{ V4L2_QCOM_BUF_FLAG_EOSEQ, "QCOM_EOSEQ" },
+	{ V4L2_QCOM_BUF_TIMESTAMP_INVALID, "QCOM_TIMESTAMP_INVALID" },
+	{ V4L2_QCOM_BUF_FLAG_IDRFRAME, "QCOM_IDRFRAME" },
+	{ V4L2_QCOM_BUF_FLAG_DECODEONLY, "QCOM_DECODEONLY" },
+	{ V4L2_QCOM_BUF_DATA_CORRUPT, "QCOM_DATA_CORRUPT" },
+	{ V4L2_QCOM_BUF_DROP_FRAME, "QCOM_DROP_FRAME" },
+	{ V4L2_QCOM_BUF_INPUT_UNSUPPORTED, "QCOM_INPUT_UNSUPPORTED" },
+	{ V4L2_QCOM_BUF_FLAG_EOS, "QCOM_EOS" },
+	{ V4L2_QCOM_BUF_FLAG_READONLY, "QCOM_READONLY" },
+	{ V4L2_MSM_VIDC_BUF_START_CODE_NOT_FOUND, "MSM_START_CODE_NOT_FOUND" },
+	{ V4L2_MSM_BUF_FLAG_YUV_601_709_CLAMP, "MSM_YUV_601_709_CLAMP" },
+	{ V4L2_MSM_BUF_FLAG_MBAFF, "MSM_MBAFF" },
+	{ V4L2_MSM_BUF_FLAG_DEFER, "MSM_DEFER" },
+};
+
+static const char *buf_flags_to_string(uint32_t flags)
+{
+	static __thread char s[256];
+	size_t n = 0;
+
+	for (size_t i = 0; i < ARRAY_LENGTH(v4l2_buf_flags); i++) {
+		if (flags & v4l2_buf_flags[i].mask) {
+			n += snprintf(s + n, sizeof (s) - n, "%s%s",
+				      n > 0 ? "|" : "",
+				      v4l2_buf_flags[i].str);
+			if (n >= sizeof (s))
+				break;
+		}
+	}
+
+	s[MIN(n, sizeof (s) - 1)] = '\0';
+
+	return s;
+}
+
 static const char *fourcc_to_string(uint32_t fourcc)
 {
 	static __thread char s[4];
@@ -359,11 +415,12 @@ int video_queue_buf_out(struct instance *i, int n, int length,
 		return -1;
 	}
 
-	dbg("%s: queued buffer %d (flags:%08x, bytesused:%d, ts: %ld.%lu), "
-	    "%d/%d queued", buf_type_to_string(buf.type), buf.index, buf.flags,
-	    buf.m.planes[0].bytesused, buf.timestamp.tv_sec,
-	    buf.timestamp.tv_usec, video_count_output_queued_bufs(vid),
-	    vid->out_buf_cnt);
+	dbg("%s: queued buffer %d (flags:%08x:%s, bytesused:%d, "
+	    "ts: %ld.%06lu), %d/%d queued", buf_type_to_string(buf.type),
+	    buf.index, buf.flags, buf_flags_to_string(buf.flags),
+	    buf.m.planes[0].bytesused,
+	    buf.timestamp.tv_sec, buf.timestamp.tv_usec,
+	    video_count_output_queued_bufs(vid), vid->out_buf_cnt);
 
 	return 0;
 }
@@ -439,9 +496,11 @@ static int video_dequeue_buf(struct instance *i, struct v4l2_buffer *buf)
 		break;
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
 		vid->cap_buf_flag[buf->index] = 0;
-		dbg("%s: dequeued buffer %d (flags:%08x, bytesused:%d, "
-		    "ts: %ld.%lu), %d/%d queued", buf_type_to_string(buf->type),
-		    buf->index, buf->flags, buf->m.planes[0].bytesused,
+		dbg("%s: dequeued buffer %d (flags:%08x:%s, bytesused:%d, "
+		    "ts: %ld.%06lu), %d/%d queued",
+		    buf_type_to_string(buf->type),
+		    buf->index, buf->flags, buf_flags_to_string(buf->flags),
+		    buf->m.planes[0].bytesused,
 		    buf->timestamp.tv_sec, buf->timestamp.tv_usec,
 		    video_count_capture_queued_bufs(vid), vid->cap_buf_cnt);
 		break;

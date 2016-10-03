@@ -35,6 +35,8 @@
 
 extern int debug_level;
 
+#define ARRAY_LENGTH(x) (sizeof (x) / sizeof (*(x)))
+
 #define print(l, msg, ...)						\
 	do {								\
 		if (debug_level >= l)					\
