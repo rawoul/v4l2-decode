@@ -74,6 +74,7 @@ int video_dequeue_capture(struct instance *i, int *n, int *finished,
 /* Dequeue a pending event */
 int video_dequeue_event(struct instance *i, struct v4l2_event *ev);
 
+int video_set_framerate(struct instance *i, int num, int den);
 int video_set_control(struct instance *i);
 int video_set_dpb(struct instance *i,
 		  enum v4l2_mpeg_vidc_video_dpb_color_format format);

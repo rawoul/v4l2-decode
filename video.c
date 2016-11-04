@@ -351,6 +351,25 @@ int video_set_dpb(struct instance *i,
 	return 0;
 }
 
+int video_set_framerate(struct instance *i, int num, int den)
+{
+	struct v4l2_streamparm parm;
+
+	dbg("set framerate to %.3f", (float)num / (float)den);
+
+	memzero(parm);
+	parm.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+	parm.parm.output.timeperframe.numerator = den;
+	parm.parm.output.timeperframe.denominator = num;
+
+	if (ioctl(i->video.fd, VIDIOC_S_PARM, &parm) < 0) {
+		err("Failed to set framerate on OUTPUT: %m");
+		return -1;
+	}
+
+	return 0;
+}
+
 static int video_count_capture_queued_bufs(struct video *vid)
 {
 	int cap_queued = 0;
@@ -837,6 +856,8 @@ int video_setup_output(struct instance *i, unsigned long codec,
 	fmt.fmt.pix_mp.width = i->width;
 	fmt.fmt.pix_mp.height = i->height;
 	fmt.fmt.pix_mp.pixelformat = codec;
+
+	video_set_framerate(i, i->fps_n, i->fps_d);
 
 	if (ioctl(vid->fd, VIDIOC_S_FMT, &fmt) < 0) {
 		err("failed to set %s format: %m", buf_type_to_string(type));

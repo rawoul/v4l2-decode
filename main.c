@@ -737,6 +737,7 @@ stream_open(struct instance *i)
 {
 	const AVBitStreamFilter *filter;
 	AVCodecParameters *codecpar;
+	AVRational framerate;
 	int codec;
 	int ret;
 
@@ -771,6 +772,10 @@ stream_open(struct instance *i)
 
 	i->width = codecpar->width;
 	i->height = codecpar->height;
+
+	framerate = av_stream_get_r_frame_rate(i->stream);
+	i->fps_n = framerate.num;
+	i->fps_d = framerate.den;
 
 	filter = NULL;
 

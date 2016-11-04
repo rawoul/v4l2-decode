@@ -106,6 +106,7 @@ struct instance {
 	int height;
 	int fullscreen;
 	uint32_t fourcc;
+	int fps_n, fps_d;
 	int depth;
 	int interlaced;
 	int save_frames;
