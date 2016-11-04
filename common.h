@@ -124,6 +124,7 @@ struct instance {
 	/* Control */
 	int sigfd;
 	int paused;
+	int prerolled;
 	int finish;  /* Flag set when decoding has been completed and all
 			threads finish */
 

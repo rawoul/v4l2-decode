@@ -483,6 +483,8 @@ handle_video_capture(struct instance *i)
 		window_show_buffer(i->window, i->disp_buffers[n],
 				   buffer_released, i);
 
+		i->prerolled = 1;
+
 	} else if (!i->reconfigure_pending) {
 		video_queue_buf_cap(i, n);
 	}
@@ -599,6 +601,11 @@ void main_loop(struct instance *i)
 			}
 		}
 
+		if (i->paused && i->prerolled)
+			pfd[0].events &= ~(POLLIN | POLLRDNORM);
+		else
+			pfd[0].events |= POLLIN | POLLRDNORM;
+
 		ret = poll(pfd, nfds, -1);
 		if (ret <= 0) {
 			err("poll error");
@@ -616,11 +623,6 @@ void main_loop(struct instance *i)
 			err("wl_display_dispatch_pending: %m");
 			break;
 		}
-
-		if (i->paused)
-			pfd[0].events &= ~(POLLIN | POLLRDNORM);
-		else
-			pfd[0].events |= POLLIN | POLLRDNORM;
 
 		for (int idx = 0; idx < nfds; idx++) {
 			revents = pfd[idx].revents;
@@ -673,6 +675,11 @@ handle_window_key(struct window *window, uint32_t time, uint32_t key,
 			av_read_pause(i->avctx);
 		else
 			av_read_play(i->avctx);
+		break;
+
+	case KEY_S:
+		info("Frame Step");
+		i->prerolled = 0;
 		break;
 
 	case KEY_F:

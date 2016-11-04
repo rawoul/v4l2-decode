@@ -38,6 +38,7 @@ void print_usage(char *name)
 	        "  -f <directory>  save frames to directory\n"
 	        "  -d              output frames in decode order\n"
 	        "  -i              skip frames\n"
+	        "  -p              start paused\n"
 	        "  -v              increase debug verbosity\n"
 	        "  -q              remove all debug output\n"
 		"\n");
@@ -53,7 +54,7 @@ int parse_args(struct instance *i, int argc, char **argv)
 
 	debug_level = 2;
 
-	while ((c = getopt(argc, argv, "dfhim:o:qv")) != -1) {
+	while ((c = getopt(argc, argv, "dfhim:o:pqv")) != -1) {
 		switch (c) {
 		case 'm':
 			i->video.name = optarg;
@@ -67,6 +68,9 @@ int parse_args(struct instance *i, int argc, char **argv)
 			break;
 		case 'f':
 			i->fullscreen = 1;
+			break;
+		case 'p':
+			i->paused = 1;
 			break;
 		case 'q':
 			debug_level = 0;
