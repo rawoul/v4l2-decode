@@ -291,6 +291,21 @@ void video_close(struct instance *i)
 	close(i->video.fd);
 }
 
+int video_set_secure(struct instance *i)
+{
+	struct v4l2_control control = {0};
+
+	control.id = V4L2_CID_MPEG_VIDC_VIDEO_SECURE;
+	control.value = 1;
+
+	if (ioctl(i->video.fd, VIDIOC_S_CTRL, &control) < 0) {
+		err("failed to set secure mode: %m");
+		return -1;
+	}
+
+	return 0;
+}
+
 int video_set_control(struct instance *i)
 {
 	struct v4l2_control control = {0};
@@ -485,14 +500,18 @@ int video_queue_buf_cap(struct instance *i, int n)
 	buf.length = 2;
 	buf.m.planes = planes;
 
-	buf.m.planes[0].m.userptr = (unsigned long)vid->cap_ion_addr;
+	buf.m.planes[0].m.userptr = i->secure ?
+		(unsigned long)vid->cap_ion_fd :
+		(unsigned long)vid->cap_ion_addr;
 	buf.m.planes[0].reserved[0] = vid->cap_ion_fd;
 	buf.m.planes[0].reserved[1] = vid->cap_buf_off[n][0];
 	buf.m.planes[0].length = vid->cap_buf_size[0];
 	buf.m.planes[0].bytesused = vid->cap_buf_size[0];
 	buf.m.planes[0].data_offset = 0;
 
-	buf.m.planes[1].m.userptr = (unsigned long)vid->cap_ion_addr;
+	buf.m.planes[1].m.userptr = i->secure ?
+		(unsigned long)vid->cap_ion_fd :
+		(unsigned long)vid->cap_ion_addr;
 	buf.m.planes[1].reserved[0] = vid->cap_ion_fd;
 	buf.m.planes[1].reserved[1] = 0;
 	buf.m.planes[1].length = 0;
@@ -629,7 +648,7 @@ int video_flush(struct instance *i, uint32_t flags)
 }
 
 static int
-alloc_ion_buffer(struct instance *i, size_t size)
+alloc_ion_buffer(struct instance *i, size_t size, uint32_t flags)
 {
 	struct ion_allocation_data ion_alloc = { 0 };
 	struct ion_fd_data ion_fd_data = { 0 };
@@ -645,11 +664,18 @@ alloc_ion_buffer(struct instance *i, size_t size)
 		}
 	}
 
+	ion_alloc.handle = -1;
 	ion_alloc.len = size;
 	ion_alloc.align = 4096;
-	ion_alloc.heap_id_mask = ION_HEAP(ION_IOMMU_HEAP_ID);
-	ion_alloc.flags = 0;
-	ion_alloc.handle = -1;
+	ion_alloc.flags = flags;
+
+	if (flags & ION_SECURE)
+		ion_alloc.heap_id_mask = ION_HEAP(ION_SECURE_HEAP_ID);
+	else
+		ion_alloc.heap_id_mask = ION_HEAP(ION_IOMMU_HEAP_ID);
+
+	if (flags & ION_FLAG_CP_BITSTREAM)
+		ion_alloc.heap_id_mask |= ION_HEAP(ION_SECURE_DISPLAY_HEAP_ID);
 
 	if (ioctl(ion_fd, ION_IOC_ALLOC, &ion_alloc) < 0) {
 		err("Failed to allocate ion buffer: %m");
@@ -703,6 +729,7 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 	int buffer_size;
 	int color_fmt;
 	int ion_fd;
+	uint32_t ion_flags;
 	void *buf_addr;
 	int n;
 
@@ -787,15 +814,26 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 	if (vid->cap_buf_size[0] < buffer_size)
 		vid->cap_buf_size[0] = buffer_size;
 
-	ion_fd = alloc_ion_buffer(i, vid->cap_buf_cnt * vid->cap_buf_size[0]);
+	if (i->secure)
+		ion_flags = ION_FLAG_SECURE | ION_FLAG_CP_PIXEL;
+	else
+		ion_flags = ION_FLAG_CACHED;
+
+	ion_fd = alloc_ion_buffer(i, vid->cap_buf_cnt * vid->cap_buf_size[0],
+				  ion_flags);
 	if (ion_fd < 0)
 		return -1;
 
-	buf_addr = mmap(NULL, vid->cap_buf_cnt * vid->cap_buf_size[0],
-			PROT_READ, MAP_SHARED, ion_fd, 0);
-	if (buf_addr == MAP_FAILED) {
-		err("failed to map %s buffer: %m", buf_type_to_string(type));
-		return -1;
+	if (!i->secure) {
+		buf_addr = mmap(NULL, vid->cap_buf_cnt * vid->cap_buf_size[0],
+				PROT_READ, MAP_SHARED, ion_fd, 0);
+		if (buf_addr == MAP_FAILED) {
+			err("failed to map %s buffer: %m",
+			    buf_type_to_string(type));
+			return -1;
+		}
+	} else {
+		buf_addr = NULL;
 	}
 
 	vid->cap_ion_fd = ion_fd;
@@ -900,7 +938,8 @@ int video_setup_output(struct instance *i, unsigned long codec,
 	dbg("%s: requested %d buffers, got %d", buf_type_to_string(type),
 	    count, reqbuf.count);
 
-	ion_fd = alloc_ion_buffer(i, vid->out_buf_cnt * vid->out_buf_size);
+	ion_fd = alloc_ion_buffer(i, vid->out_buf_cnt * vid->out_buf_size,
+				  ION_FLAG_CACHED);
 	if (ion_fd < 0)
 		return -1;
 

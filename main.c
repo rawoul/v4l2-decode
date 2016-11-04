@@ -1010,6 +1010,12 @@ int main(int argc, char **argv)
 	if (ret)
 		goto err;
 
+	if (inst.secure) {
+		ret = video_set_secure(&inst);
+		if (ret)
+			goto err;
+	}
+
 	ret = video_setup_output(&inst, inst.fourcc,
 				 STREAM_BUUFER_SIZE, 6);
 	if (ret)

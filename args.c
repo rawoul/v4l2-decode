@@ -39,6 +39,7 @@ void print_usage(char *name)
 	        "  -d              output frames in decode order\n"
 	        "  -i              skip frames\n"
 	        "  -p              start paused\n"
+	        "  -s              secure mode\n"
 	        "  -v              increase debug verbosity\n"
 	        "  -q              remove all debug output\n"
 		"\n");
@@ -54,7 +55,7 @@ int parse_args(struct instance *i, int argc, char **argv)
 
 	debug_level = 2;
 
-	while ((c = getopt(argc, argv, "dfhim:o:pqv")) != -1) {
+	while ((c = getopt(argc, argv, "dfhim:o:pqsv")) != -1) {
 		switch (c) {
 		case 'm':
 			i->video.name = optarg;
@@ -77,6 +78,9 @@ int parse_args(struct instance *i, int argc, char **argv)
 			break;
 		case 'i':
 			i->skip_frames = 1;
+			break;
+		case 's':
+			i->secure = 1;
 			break;
 		case 'v':
 			debug_level++;
