@@ -106,6 +106,8 @@ struct instance {
 	int height;
 	int fullscreen;
 	uint32_t fourcc;
+	int depth;
+	int interlaced;
 	int save_frames;
 	int decode_order;
 	char *save_path;

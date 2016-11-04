@@ -674,6 +674,10 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 
 	type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 
+	video_set_dpb(i, i->depth == 10 ?
+		      V4L2_MPEG_VIDC_VIDEO_DPB_COLOR_FMT_TP10_UBWC :
+		      V4L2_MPEG_VIDC_VIDEO_DPB_COLOR_FMT_NONE);
+
 	memzero(fmt);
 	fmt.type = type;
 	fmt.fmt.pix_mp.height = h;

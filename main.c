@@ -154,9 +154,17 @@ handle_video_event(struct instance *i)
 			     depth == MSM_VIDC_BIT_DEPTH_8 ? "8bits" :
 			     "??");
 
-			video_set_dpb(i, depth == MSM_VIDC_BIT_DEPTH_10 ?
-				      V4L2_MPEG_VIDC_VIDEO_DPB_COLOR_FMT_TP10_UBWC :
-				      V4L2_MPEG_VIDC_VIDEO_DPB_COLOR_FMT_NONE);
+			switch (depth) {
+			case MSM_VIDC_BIT_DEPTH_10:
+				i->depth = 10;
+				break;
+			case MSM_VIDC_BIT_DEPTH_8:
+				i->depth = 8;
+				break;
+			default:
+				i->depth = 0;
+				break;
+			}
 		}
 
 		if (ptr[2] & V4L2_EVENT_PICSTRUCT_FLAG) {
@@ -166,6 +174,11 @@ handle_video_event(struct instance *i)
 			     "progressive" :
 			     pic_struct == MSM_VIDC_PIC_STRUCT_MAYBE_INTERLACED ?
 			     "interlaced" : "??");
+
+			if (pic_struct == MSM_VIDC_PIC_STRUCT_MAYBE_INTERLACED)
+				i->interlaced = 1;
+			else
+				i->interlaced = 0;
 		}
 
 		i->width = width;
