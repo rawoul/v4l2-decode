@@ -305,6 +305,16 @@ int video_set_control(struct instance *i)
 		}
 	}
 
+	if (i->skip_frames) {
+		control.id = V4L2_CID_MPEG_VIDC_VIDEO_PICTYPE_DEC_MODE;
+		control.value = V4L2_MPEG_VIDC_VIDEO_PICTYPE_DECODE_ON;
+
+		if (ioctl(i->video.fd, VIDIOC_S_CTRL, &control) < 0) {
+			err("failed to set skip mode: %m");
+			return -1;
+		}
+	}
+
 	control.id = V4L2_CID_MPEG_VIDC_VIDEO_CONTINUE_DATA_TRANSFER;
 	control.value = 1;
 

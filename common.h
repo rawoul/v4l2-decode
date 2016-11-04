@@ -111,6 +111,7 @@ struct instance {
 	int interlaced;
 	int save_frames;
 	int decode_order;
+	int skip_frames;
 	char *save_path;
 	char *url;
 
