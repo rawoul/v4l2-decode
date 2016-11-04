@@ -331,6 +331,14 @@ int video_set_control(struct instance *i)
 		return -1;
 	}
 
+	control.id = V4L2_CID_MPEG_VIDC_VIDEO_CONCEAL_COLOR;
+	control.value = 0x00ff;
+
+	if (ioctl(i->video.fd, VIDIOC_S_CTRL, &control) < 0) {
+		err("failed to set conceal color: %m");
+		return -1;
+	}
+
 	return 0;
 }
 
