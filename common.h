@@ -112,6 +112,7 @@ struct instance {
 	int save_frames;
 	int decode_order;
 	int skip_frames;
+	int secure;
 	char *save_path;
 	char *url;
 
