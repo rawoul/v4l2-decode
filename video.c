@@ -364,10 +364,7 @@ int video_set_dpb(struct instance *i,
 	struct v4l2_ext_controls controls = {0};
 
 	control[0].id = V4L2_CID_MPEG_VIDC_VIDEO_STREAM_OUTPUT_MODE;
-	control[0].value =
-		(format == V4L2_MPEG_VIDC_VIDEO_DPB_COLOR_FMT_TP10_UBWC) ?
-		V4L2_CID_MPEG_VIDC_VIDEO_STREAM_OUTPUT_SECONDARY :
-		V4L2_CID_MPEG_VIDC_VIDEO_STREAM_OUTPUT_PRIMARY;
+	control[0].value = V4L2_CID_MPEG_VIDC_VIDEO_STREAM_OUTPUT_PRIMARY;
 
 	control[1].id = V4L2_CID_MPEG_VIDC_VIDEO_DPB_COLOR_FORMAT;
 	control[1].value = format;
@@ -744,11 +741,13 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 	fmt.type = type;
 	fmt.fmt.pix_mp.height = h;
 	fmt.fmt.pix_mp.width = w;
-#if 0
-	fmt.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_NV12_UBWC;
-#else
-	fmt.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_NV12;
-#endif
+
+	if (i->depth == 10)
+		fmt.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_NV12_TP10_UBWC;
+	else if (!i->interlaced)
+		fmt.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_NV12_UBWC;
+	else
+		fmt.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_NV12;
 
 	if (ioctl(vid->fd, VIDIOC_S_FMT, &fmt) < 0) {
 		err("failed to set %s format (%dx%d)",
