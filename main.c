@@ -467,6 +467,133 @@ dump_pkt(const uint8_t *data, size_t size)
 	return buf;
 }
 
+
+/*
+ * Escape start codes in BDU
+ */
+static int
+rbdu_escape(uint8_t *dst, int dst_size, const uint8_t *src, int src_size)
+{
+	uint8_t *dstp = dst;
+	const uint8_t *srcp = src;
+	const uint8_t *end = src + src_size;
+	int count = 0;
+
+	while (srcp < end) {
+		if (count == 2 && *srcp <= 0x03) {
+			*dstp++ = 0x03;
+			count = 0;
+		}
+
+		if (*srcp == 0)
+			count++;
+		else
+			count = 0;
+
+		*dstp++ = *srcp++;
+	}
+
+	return dstp - dst;
+}
+
+/*
+ * Transform RBDU (raw bitstream decodable units)
+ *  into an EBDU (encapsulated bitstream decodable units)
+ */
+static int
+vc1_write_bdu(uint8_t *dst, int dst_size,
+	      uint8_t *bdu, int bdu_size,
+	      uint8_t type)
+{
+	int len;
+
+	/* add start code */
+	dst[0] = 0x00;
+	dst[1] = 0x00;
+	dst[2] = 0x01;
+	dst[3] = type;
+	len = 4;
+
+	/* escape start codes */
+	len += rbdu_escape(dst + len, dst_size - len, bdu, bdu_size);
+
+	/* add flushing byte at the end of the BDU */
+	dst[len++] = 0x80;
+
+	return len;
+}
+
+static int
+vc1_find_sc(const uint8_t *data, int size)
+{
+	for (int i = 0; i < size - 4; i++) {
+		if (data[i + 0] == 0x00 &&
+		    data[i + 1] == 0x00 &&
+		    data[i + 2] == 0x01)
+			return i;
+	}
+
+	return -1;
+}
+
+static int
+write_sequence_header_vc1(struct instance *i, uint8_t *data, int size)
+{
+	AVCodecParameters *codecpar = i->stream->codecpar;
+	int n;
+
+	if (codecpar->extradata_size == 0) {
+		dbg("no codec data, skip sequence header generation");
+		return 0;
+	}
+
+	if (codecpar->extradata_size == 4 || codecpar->extradata_size == 5) {
+		/* Simple/Main Profile ASF header */
+		return vc1_write_bdu(data, size,
+				     codecpar->extradata,
+				     codecpar->extradata_size,
+				     0x0f);
+	}
+
+	if (codecpar->extradata_size == 36 && codecpar->extradata[3] == 0xc5) {
+		/* Annex L Sequence Layer */
+		if (size < codecpar->extradata_size)
+			return -1;
+
+		memcpy(data, codecpar->extradata, codecpar->extradata_size);
+		return codecpar->extradata_size;
+	}
+
+	n = vc1_find_sc(codecpar->extradata, codecpar->extradata_size);
+	if (n >= 0) {
+		/* BDU in header */
+		if (size < codecpar->extradata_size - n)
+			return -1;
+
+		memcpy(data, codecpar->extradata + n,
+		       codecpar->extradata_size - n);
+		return codecpar->extradata_size - n;
+	}
+
+	err("cannot parse VC1 codec data");
+
+	return -1;
+}
+
+static int
+write_sequence_header(struct instance *i, uint8_t *data, int size)
+{
+	AVCodecParameters *codecpar = i->stream->codecpar;
+
+	switch (codecpar->codec_id) {
+	case AV_CODEC_ID_WMV3:
+	case AV_CODEC_ID_VC1:
+		return write_sequence_header_vc1(i, data, size);
+	default:
+		return 0;
+	}
+}
+
 static int
 send_pkt(struct instance *i, int buf_index, AVPacket *pkt)
 {
@@ -479,12 +606,38 @@ send_pkt(struct instance *i, int buf_index, AVPacket *pkt)
 	const char *hex;
 	AVRational vid_timebase;
 	AVRational v4l_timebase = { 1, 1000000 };
+	AVCodecParameters *codecpar = i->stream->codecpar;
 
 	data = (uint8_t *)vid->out_buf_addr[buf_index];
 	size = 0;
 
-	memcpy(data, pkt->data, pkt->size);
-	size += pkt->size;
+	if (i->need_header) {
+		int n = write_sequence_header(i, data, vid->out_buf_size);
+		if (n > 0)
+			size += n;
+
+		switch (codecpar->codec_id) {
+		case AV_CODEC_ID_WMV3:
+		case AV_CODEC_ID_VC1:
+			if (vc1_find_sc(pkt->data, MIN(10, pkt->size)) < 0)
+				i->insert_sc = 1;
+			break;
+		default:
+			break;
+		}
+
+		i->need_header = 0;
+	}
+
+	if ((codecpar->codec_id == AV_CODEC_ID_WMV3 ||
+	     codecpar->codec_id == AV_CODEC_ID_VC1) &&
+	    i->insert_sc) {
+		size += vc1_write_bdu(data + size, vid->out_buf_size - size,
+				      pkt->data, pkt->size, 0x0d);
+	} else {
+		memcpy(data + size, pkt->data, pkt->size);
+		size += pkt->size;
+	}
 
 	flags = 0;
 
@@ -1005,6 +1158,7 @@ stream_open(struct instance *i)
 
 	i->width = codecpar->width;
 	i->height = codecpar->height;
+	i->need_header = 1;
 
 	framerate = av_stream_get_r_frame_rate(i->stream);
 	i->fps_n = framerate.num;
@@ -1037,7 +1191,7 @@ stream_open(struct instance *i)
 		codec = V4L2_PIX_FMT_VC1_ANNEX_G;
 		break;
 	case AV_CODEC_ID_VC1:
-		codec = V4L2_PIX_FMT_VC1_ANNEX_L;
+		codec = V4L2_PIX_FMT_VC1_ANNEX_G;
 		break;
 	case AV_CODEC_ID_VP8:
 		codec = V4L2_PIX_FMT_VP8;
