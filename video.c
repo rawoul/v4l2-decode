@@ -832,6 +832,7 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 		if (buf_addr == MAP_FAILED) {
 			err("failed to map %s buffer: %m",
 			    buf_type_to_string(type));
+			close(ion_fd);
 			return -1;
 		}
 	} else {
