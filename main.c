@@ -586,7 +586,8 @@ buffer_released(struct fb *fb, void *data)
 		return;
 	}
 
-	video_queue_buf_cap(i, n);
+	if (!i->reconfigure_pending)
+		video_queue_buf_cap(i, n);
 }
 
 static int
