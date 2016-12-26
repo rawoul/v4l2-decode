@@ -633,6 +633,12 @@ int video_flush(struct instance *i, uint32_t flags)
 	struct video *vid = &i->video;
 	struct v4l2_decoder_cmd dec;
 
+	if (flags & V4L2_QCOM_CMD_FLUSH_CAPTURE)
+		dbg("flushing CAPTURE queue");
+
+	if (flags & V4L2_QCOM_CMD_FLUSH_OUTPUT)
+		dbg("flushing OUTPUT queue");
+
 	memzero(dec);
 	dec.flags = flags;
 	dec.cmd = V4L2_DEC_QCOM_CMD_FLUSH;

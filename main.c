@@ -244,20 +244,28 @@ handle_video_event(struct instance *i)
 
 		/* flush capture queue, we will reconfigure it when flush
 		 * done event is received */
-		video_flush(i, V4L2_DEC_QCOM_CMD_FLUSH_CAPTURE);
+		video_flush(i, V4L2_QCOM_CMD_FLUSH_CAPTURE);
 		break;
 	}
 	case V4L2_EVENT_MSM_VIDC_PORT_SETTINGS_CHANGED_SUFFICIENT:
 		dbg("Setting changed sufficient");
 		break;
-	case V4L2_EVENT_MSM_VIDC_FLUSH_DONE:
-		dbg("Flush Done received");
+	case V4L2_EVENT_MSM_VIDC_FLUSH_DONE: {
+		unsigned int *ptr = (unsigned int *)event.u.data;
+		unsigned int flags = ptr[0];
+
+		if (flags & V4L2_QCOM_CMD_FLUSH_CAPTURE)
+			dbg("Flush Done received on CAPTURE queue");
+		if (flags & V4L2_QCOM_CMD_FLUSH_OUTPUT)
+			dbg("Flush Done received on OUTPUT queue");
+
 		if (i->reconfigure_pending) {
 			dbg("Reconfiguring output");
 			restart_capture(i);
 			i->reconfigure_pending = 0;
 		}
 		break;
+	}
 	case V4L2_EVENT_MSM_VIDC_SYS_ERROR:
 		dbg("SYS Error received");
 		break;
