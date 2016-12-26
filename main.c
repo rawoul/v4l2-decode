@@ -439,6 +439,34 @@ send_eos(struct instance *i, int buf_index)
 	return 0;
 }
 
+static char *
+dump_pkt(const uint8_t *data, size_t size)
+{
+	static char *buf;
+	static size_t buf_size;
+	size_t s = size * 3 + 1;
+
+	if (!buf || buf_size < s) {
+		char *old = buf;
+		s = (s + 4095) & ~4095;
+		buf = realloc(old, s);
+		if (!buf) {
+			free(old);
+			return NULL;
+		}
+		buf_size = s;
+	}
+
+	for (size_t i = 0; i < size; i++) {
+		sprintf(buf + i * 3, "%c%02x",
+			i % 32 == 0 ? '\n' : ' ', data[i]);
+	}
+
+	buf[s - 1] = 0;
+
+	return buf;
+}
+
 static int
 send_pkt(struct instance *i, int buf_index, AVPacket *pkt)
 {
@@ -446,25 +474,26 @@ send_pkt(struct instance *i, int buf_index, AVPacket *pkt)
 	struct timeval tv;
 	uint64_t pts, dts, duration, start_time;
 	int flags;
+	int size;
+	uint8_t *data;
+	const char *hex;
 	AVRational vid_timebase;
 	AVRational v4l_timebase = { 1, 1000000 };
 
-	memcpy(vid->out_buf_addr[buf_index], pkt->data, pkt->size);
+	data = (uint8_t *)vid->out_buf_addr[buf_index];
+	size = 0;
+
+	memcpy(data, pkt->data, pkt->size);
+	size += pkt->size;
+
 	flags = 0;
 
-	if (i->bsf)
-		vid_timebase = i->bsf->time_base_out;
-	else
-		vid_timebase = i->stream->time_base;
+	vid_timebase = i->stream->time_base;
 
 	start_time = 0;
 	if (i->stream->start_time != AV_NOPTS_VALUE)
 		start_time = av_rescale_q(i->stream->start_time,
 					  vid_timebase, v4l_timebase);
-
-	info("input pts=%" PRIi64 " dts=%" PRIi64 " duration=%" PRIu64
-	     " start_time=%" PRIi64, pkt->pts, pkt->dts, pkt->duration,
-	     i->stream->start_time);
 
 	pts = TIMESTAMP_NONE;
 	if (pkt->pts != AV_NOPTS_VALUE)
@@ -480,6 +509,15 @@ send_pkt(struct instance *i, int buf_index, AVPacket *pkt)
 					vid_timebase, v4l_timebase);
 	}
 
+	if (debug_level > 3)
+		hex = dump_pkt(data, size);
+	else
+		hex = "";
+
+	dbg("input size=%d pts=%" PRIi64 " dts=%" PRIi64 " duration=%" PRIu64
+	     " start_time=%" PRIi64 "%s", size, pts, dts, duration,
+	     start_time, hex);
+
 	if (pts != TIMESTAMP_NONE) {
 		tv.tv_sec = pts / 1000000;
 		tv.tv_usec = pts % 1000000;
@@ -493,11 +531,8 @@ send_pkt(struct instance *i, int buf_index, AVPacket *pkt)
 	    pts != TIMESTAMP_NONE && dts != TIMESTAMP_NONE)
 		vid->pts_dts_delta = pts - dts;
 
-	if (video_queue_buf_out(i, buf_index, pkt->size, flags, tv) < 0)
+	if (video_queue_buf_out(i, buf_index, size, flags, tv) < 0)
 		return -1;
-
-	info("input pts=%" PRIi64 " dts=%" PRIi64 " duration=%" PRIu64,
-	     pts, dts, duration);
 
 	pthread_mutex_lock(&i->lock);
 	ts_insert(vid, pts, dts, duration, start_time);
@@ -635,18 +670,18 @@ handle_video_capture(struct instance *i)
 		}
 
 		if (min) {
-			info("pending %d min pts %" PRIi64
-			     " dts %" PRIi64
-			     " duration %" PRIi64, pending,
-			     min->pts, min->dts, min->duration);
+			dbg("pending %d min pts %" PRIi64
+			    " dts %" PRIi64
+			    " duration %" PRIi64, pending,
+			    min->pts, min->dts, min->duration);
 		}
 
 		if (pts == TIMESTAMP_NONE) {
-			info("no pts on frame");
+			dbg("no pts on frame");
 			if (min && vid->pts_dts_delta != TIMESTAMP_NONE) {
-				info("reuse dts %" PRIu64
-				     " delta %" PRIu64,
-				     min->dts, vid->pts_dts_delta);
+				dbg("reuse dts %" PRIu64
+				    " delta %" PRIu64,
+				    min->dts, vid->pts_dts_delta);
 				pts = min->dts + vid->pts_dts_delta;
 			}
 		}
@@ -657,7 +692,7 @@ handle_video_capture(struct instance *i)
 			else
 				pts = 0;
 
-			info("guessing pts %" PRIu64, pts);
+			dbg("guessing pts %" PRIu64, pts);
 		}
 
 		vid->cap_last_pts = pts;
@@ -677,7 +712,6 @@ handle_video_capture(struct instance *i)
 		i->prerolled = 1;
 
 	} else if (!i->reconfigure_pending) {
-		info("drop buffer");
 		video_queue_buf_cap(i, n);
 	}
 
