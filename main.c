@@ -58,6 +58,8 @@ static const int event_type[] = {
 	V4L2_EVENT_MSM_VIDC_SYS_ERROR,
 	V4L2_EVENT_MSM_VIDC_HW_OVERLOAD,
 	V4L2_EVENT_MSM_VIDC_HW_UNSUPPORTED,
+	V4L2_EVENT_MSM_VIDC_RELEASE_BUFFER_REFERENCE,
+	V4L2_EVENT_MSM_VIDC_RELEASE_UNQUEUED_BUFFER,
 };
 
 static int
@@ -130,6 +132,60 @@ restart_capture(struct instance *i)
 	return 0;
 }
 
+static const char *
+colorspace_to_string(int cspace)
+{
+	switch (cspace) {
+	case MSM_VIDC_BT709_5:
+		return "bt709";
+	case MSM_VIDC_UNSPECIFIED:
+		return "unspecified";
+	case MSM_VIDC_BT470_6_M:
+		return "bt470m";
+	case MSM_VIDC_BT601_6_625:
+		return "bt601/625";
+	case MSM_VIDC_BT601_6_525:
+		return "bt601/525";
+	case MSM_VIDC_SMPTE_240M:
+		return "smpte240m";
+	case MSM_VIDC_GENERIC_FILM:
+		return "generic";
+	case MSM_VIDC_BT2020:
+		return "bt2020";
+	case MSM_VIDC_RESERVED_1:
+		return "reserved1";
+	case MSM_VIDC_RESERVED_2:
+		return "reserved2";
+	}
+	return "unknown";
+}
+
+static const char *
+depth_to_string(int depth)
+{
+	switch (depth) {
+	case MSM_VIDC_BIT_DEPTH_8:
+		return "8bits";
+	case MSM_VIDC_BIT_DEPTH_10:
+		return "10bits";
+	case MSM_VIDC_BIT_DEPTH_UNSUPPORTED:
+		return "unsupported";
+	}
+	return "unknown";
+}
+
+static const char *
+pic_struct_to_string(int pic)
+{
+	switch (pic) {
+	case MSM_VIDC_PIC_STRUCT_PROGRESSIVE:
+		return "progressive";
+	case MSM_VIDC_PIC_STRUCT_MAYBE_INTERLACED:
+		return "interlaced";
+	}
+	return "unknown";
+}
+
 static int
 handle_video_event(struct instance *i)
 {
@@ -150,9 +206,7 @@ handle_video_event(struct instance *i)
 		if (ptr[2] & V4L2_EVENT_BITDEPTH_FLAG) {
 			enum msm_vidc_pixel_depth depth = ptr[3];
 			info("  bit depth changed to %s",
-			     depth == MSM_VIDC_BIT_DEPTH_10 ? "10bits" :
-			     depth == MSM_VIDC_BIT_DEPTH_8 ? "8bits" :
-			     "??");
+			     depth_to_string(depth));
 
 			switch (depth) {
 			case MSM_VIDC_BIT_DEPTH_10:
@@ -170,15 +224,18 @@ handle_video_event(struct instance *i)
 		if (ptr[2] & V4L2_EVENT_PICSTRUCT_FLAG) {
 			unsigned int pic_struct = ptr[4];
 			info("  interlacing changed to %s",
-			     pic_struct == MSM_VIDC_PIC_STRUCT_PROGRESSIVE ?
-			     "progressive" :
-			     pic_struct == MSM_VIDC_PIC_STRUCT_MAYBE_INTERLACED ?
-			     "interlaced" : "??");
+			     pic_struct_to_string(pic_struct));
 
 			if (pic_struct == MSM_VIDC_PIC_STRUCT_MAYBE_INTERLACED)
 				i->interlaced = 1;
 			else
 				i->interlaced = 0;
+		}
+
+		if (ptr[2] & V4L2_EVENT_COLOUR_SPACE_FLAG) {
+			unsigned int cspace = ptr[5];
+			info("  colorspace changed to %s",
+			     colorspace_to_string(cspace));
 		}
 
 		i->width = width;
@@ -209,6 +266,12 @@ handle_video_event(struct instance *i)
 		break;
 	case V4L2_EVENT_MSM_VIDC_HW_UNSUPPORTED:
 		dbg("HW Unsupported received");
+		break;
+	case V4L2_EVENT_MSM_VIDC_RELEASE_BUFFER_REFERENCE:
+		dbg("Release buffer reference");
+		break;
+	case V4L2_EVENT_MSM_VIDC_RELEASE_UNQUEUED_BUFFER:
+		dbg("Release unqueued buffer");
 		break;
 	default:
 		dbg("unknown event type occurred %x", event.type);
