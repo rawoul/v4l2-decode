@@ -819,7 +819,7 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 	if (i->secure)
 		ion_flags = ION_FLAG_SECURE | ION_FLAG_CP_PIXEL;
 	else
-		ion_flags = ION_FLAG_CACHED;
+		ion_flags = 0;
 
 	ion_size = vid->cap_buf_cnt * buffer_size;
 	ion_fd = alloc_ion_buffer(i, ion_size, ion_flags);
