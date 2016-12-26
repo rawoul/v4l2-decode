@@ -84,6 +84,7 @@ struct video {
 	char *out_buf_addr[MAX_OUT_BUF];
 	int out_buf_flag[MAX_OUT_BUF];
 	int out_ion_fd;
+	int out_ion_size;
 	void *out_ion_addr;
 
 	/* Capture queue related */
@@ -97,6 +98,7 @@ struct video {
 	char *cap_buf_addr[MAX_CAP_BUF][CAP_PLANES];
 	int cap_buf_flag[MAX_CAP_BUF];
 	int cap_ion_fd;
+	int cap_ion_size;
 	void *cap_ion_addr;
 
 	/* timestamp list for all pending frames */
