@@ -1340,8 +1340,8 @@ int main(int argc, char **argv)
 
 	dbg("Threads have finished");
 
-	video_stop_capture(&inst);
 	video_stop_output(&inst);
+	video_stop_capture(&inst);
 
 	cleanup(&inst);
 

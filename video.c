@@ -875,6 +875,16 @@ int video_stop_capture(struct instance *i)
 	if (video_stream(i, type, VIDIOC_STREAMOFF))
 		return -1;
 
+	memzero(reqbuf);
+	reqbuf.memory = V4L2_MEMORY_USERPTR;
+	reqbuf.type = type;
+
+	if (ioctl(vid->fd, VIDIOC_REQBUFS, &reqbuf) < 0) {
+		err("REQBUFS with count=0 on %s queue failed: %m",
+		    buf_type_to_string(type));
+		return -1;
+	}
+
 	if (vid->cap_ion_addr) {
 		if (munmap(vid->cap_ion_addr, vid->cap_ion_size))
 			err("failed to unmap %s buffer: %m",
@@ -891,16 +901,6 @@ int video_stop_capture(struct instance *i)
 	vid->cap_ion_size = 0;
 	vid->cap_ion_addr = NULL;
 	vid->cap_buf_cnt = 0;
-
-	memzero(reqbuf);
-	reqbuf.memory = V4L2_MEMORY_USERPTR;
-	reqbuf.type = type;
-
-	if (ioctl(vid->fd, VIDIOC_REQBUFS, &reqbuf) < 0) {
-		err("REQBUFS with count=0 on %s queue failed: %m",
-		    buf_type_to_string(type));
-		return -1;
-	}
 
 	return 0;
 }
@@ -992,6 +992,16 @@ int video_stop_output(struct instance *i)
 	if (video_stream(i, type, VIDIOC_STREAMOFF))
 		return -1;
 
+	memzero(reqbuf);
+	reqbuf.memory = V4L2_MEMORY_USERPTR;
+	reqbuf.type = type;
+
+	if (ioctl(vid->fd, VIDIOC_REQBUFS, &reqbuf) < 0) {
+		err("REQBUFS with count=0 on %s queue failed: %m",
+		    buf_type_to_string(type));
+		return -1;
+	}
+
 	if (vid->out_ion_addr) {
 		if (munmap(vid->out_ion_addr, vid->out_ion_size))
 			err("failed to unmap %s buffer: %m",
@@ -1008,16 +1018,6 @@ int video_stop_output(struct instance *i)
 	vid->out_ion_size = 0;
 	vid->out_ion_addr = NULL;
 	vid->out_buf_cnt = 0;
-
-	memzero(reqbuf);
-	reqbuf.memory = V4L2_MEMORY_USERPTR;
-	reqbuf.type = type;
-
-	if (ioctl(vid->fd, VIDIOC_REQBUFS, &reqbuf) < 0) {
-		err("REQBUFS with count=0 on %s queue failed: %m",
-		    buf_type_to_string(type));
-		return -1;
-	}
 
 	return 0;
 }
