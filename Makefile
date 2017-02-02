@@ -43,7 +43,7 @@ EXEC = v4l2_decode
 cflags = -Wall -pthread $(CFLAGS)
 ldflags = -pthread $(LDFLAGS)
 cppflags = -Iprotocol -D_DEFAULT_SOURCE $(CPPFLAGS)
-ldlibs = -lm -lwayland-client -lavformat -lavcodec -lavutil
+ldlibs = -lm -Wl,--push-state -Wl,-Bstatic $(shell $(PKG_CONFIG) --libs --static wayland-client libavformat libavcodec libavutil) -Wl,--pop-state
 
 all: $(EXEC)
 
