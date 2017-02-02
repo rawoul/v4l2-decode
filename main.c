@@ -1193,8 +1193,8 @@ stream_open(struct instance *i)
 	i->stream = i->avctx->streams[ret];
 	codecpar = i->stream->codecpar;
 
-	i->width = codecpar->width;
-	i->height = codecpar->height;
+	i->width = codecpar->width ?: 320;
+	i->height = codecpar->height ?: 240;
 	i->need_header = 1;
 
 	framerate = av_stream_get_r_frame_rate(i->stream);
