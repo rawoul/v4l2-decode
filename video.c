@@ -954,7 +954,7 @@ int video_setup_output(struct instance *i, unsigned long codec,
 	    count, reqbuf.count);
 
 	ion_size = vid->out_buf_cnt * vid->out_buf_size;
-	ion_fd = alloc_ion_buffer(i, ion_size, ION_FLAG_CACHED);
+	ion_fd = alloc_ion_buffer(i, ion_size, 0);
 	if (ion_fd < 0)
 		return -1;
 
