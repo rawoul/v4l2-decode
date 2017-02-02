@@ -117,16 +117,18 @@ restart_capture(struct instance *i)
 	 */
 	i->group++;
 
-	for (n = 0; n < vid->cap_buf_cnt; n++) {
-		i->disp_buffers[n] =
-			window_create_buffer(i->window, i->group, n,
-					     vid->cap_ion_fd,
-					     vid->cap_buf_off[n][0],
-					     vid->cap_buf_format,
-					     vid->cap_w, vid->cap_h,
-					     vid->cap_buf_stride[0]);
-		if (!i->disp_buffers[n])
-			return -1;
+	if (i->window) {
+		for (n = 0; n < vid->cap_buf_cnt; n++) {
+			i->disp_buffers[n] =
+				window_create_buffer(i->window, i->group, n,
+						     vid->cap_ion_fd,
+						     vid->cap_buf_off[n][0],
+						     vid->cap_buf_format,
+						     vid->cap_w, vid->cap_h,
+						     vid->cap_buf_stride[0]);
+			if (!i->disp_buffers[n])
+				return -1;
+		}
 	}
 
 	return 0;
@@ -794,6 +796,7 @@ handle_video_capture(struct instance *i)
 	uint32_t flags;
 	uint64_t pts;
 	unsigned int bytesused;
+	bool busy;
 	int ret, n;
 
 	/* capture buffer is ready */
@@ -808,6 +811,8 @@ handle_video_capture(struct instance *i)
 		pts = TIMESTAMP_NONE;
 	else
 		pts = ((uint64_t)tv.tv_sec) * 1000000 + tv.tv_usec;
+
+	busy = false;
 
 	if (bytesused > 0) {
 		struct ts_entry *l, *min = NULL;
@@ -865,16 +870,19 @@ handle_video_capture(struct instance *i)
 
 		pthread_mutex_unlock(&i->lock);
 
-		info("show buffer pts=%" PRIu64, pts);
-
-		window_show_buffer(i->window, i->disp_buffers[n],
-				   buffer_released, i);
+		if (i->window) {
+			info("show buffer pts=%" PRIu64, pts);
+			window_show_buffer(i->window, i->disp_buffers[n],
+					   buffer_released, i);
+			busy = true;
+		}
 
 		i->prerolled = 1;
 
-	} else if (!i->reconfigure_pending) {
-		video_queue_buf_cap(i, n);
 	}
+
+	if (!busy && !i->reconfigure_pending)
+		video_queue_buf_cap(i, n);
 
 	if (flags & V4L2_QCOM_BUF_FLAG_EOS) {
 		info("End of stream");
@@ -946,52 +954,71 @@ setup_signal(struct instance *i)
 	return 0;
 }
 
+enum {
+	EV_VIDEO,
+	EV_DISPLAY,
+	EV_SIGNAL,
+	EV_COUNT
+};
+
 void main_loop(struct instance *i)
 {
 	struct video *vid = &i->video;
-	struct wl_display *wl_display;
-	struct pollfd pfd[3];
+	struct wl_display *wl_display = NULL;
+	struct pollfd pfd[EV_COUNT];
+	int ev[EV_COUNT];
 	short revents;
-	int nfds;
+	int nfds = 0;
 	int ret;
 
 	dbg("main thread started");
 
-	pfd[0].fd = vid->fd;
-	pfd[0].events = POLLOUT | POLLWRNORM | POLLPRI;
+	for (int i = 0; i < EV_COUNT; i++)
+		ev[i] = -1;
 
-	wl_display = display_get_wl_display(i->display);
-	pfd[1].fd = wl_display_get_fd(wl_display);
-	pfd[1].events = POLLIN;
+	memset(pfd, 0, sizeof (pfd));
 
-	nfds = 2;
+	pfd[nfds].fd = vid->fd;
+	pfd[nfds].events = POLLOUT | POLLWRNORM | POLLPRI;
+	ev[EV_VIDEO] = nfds++;
+
+	if (i->display) {
+		wl_display = display_get_wl_display(i->display);
+		pfd[nfds].fd = wl_display_get_fd(wl_display);
+		pfd[nfds].events = POLLIN;
+		ev[EV_DISPLAY] = nfds++;
+	}
 
 	if (i->sigfd != -1) {
 		pfd[nfds].fd = i->sigfd;
 		pfd[nfds].events = POLLIN;
-		nfds++;
+		ev[EV_SIGNAL] = nfds++;
 	}
 
-	while (!i->finish && display_is_running(i->display)) {
-
-		while (wl_display_prepare_read(wl_display) != 0)
-			wl_display_dispatch_pending(wl_display);
-
-		ret = wl_display_flush(wl_display);
-		if (ret < 0) {
-			if (errno == EAGAIN)
-				pfd[1].events |= POLLOUT;
-			else if (errno != EPIPE) {
-				err("wl_display_flush: %m");
-				wl_display_cancel_read(wl_display);
+	while (!i->finish) {
+		if (i->display) {
+			if (!display_is_running(i->display))
 				break;
+
+			while (wl_display_prepare_read(wl_display) != 0)
+				wl_display_dispatch_pending(wl_display);
+
+			ret = wl_display_flush(wl_display);
+			if (ret < 0) {
+				if (errno == EAGAIN)
+					pfd[ev[EV_DISPLAY]].events |= POLLOUT;
+				else if (errno != EPIPE) {
+					err("wl_display_flush: %m");
+					wl_display_cancel_read(wl_display);
+					break;
+				}
 			}
 		}
 
 		if (i->paused && i->prerolled)
-			pfd[0].events &= ~(POLLIN | POLLRDNORM);
+			pfd[ev[EV_VIDEO]].events &= ~(POLLIN | POLLRDNORM);
 		else
-			pfd[0].events |= POLLIN | POLLRDNORM;
+			pfd[ev[EV_VIDEO]].events |= POLLIN | POLLRDNORM;
 
 		ret = poll(pfd, nfds, -1);
 		if (ret <= 0) {
@@ -999,16 +1026,18 @@ void main_loop(struct instance *i)
 			break;
 		}
 
-		ret = wl_display_read_events(wl_display);
-		if (ret < 0) {
-			err("wl_display_read_events: %m");
-			break;
-		}
+		if (i->display) {
+			ret = wl_display_read_events(wl_display);
+			if (ret < 0) {
+				err("wl_display_read_events: %m");
+				break;
+			}
 
-		ret = wl_display_dispatch_pending(wl_display);
-		if (ret < 0) {
-			err("wl_display_dispatch_pending: %m");
-			break;
+			ret = wl_display_dispatch_pending(wl_display);
+			if (ret < 0) {
+				err("wl_display_dispatch_pending: %m");
+				break;
+			}
 		}
 
 		for (int idx = 0; idx < nfds; idx++) {
@@ -1016,20 +1045,19 @@ void main_loop(struct instance *i)
 			if (!revents)
 				continue;
 
-			switch (idx) {
-			case 0:
+			if (idx == ev[EV_VIDEO]) {
 				if (revents & (POLLIN | POLLRDNORM))
 					handle_video_capture(i);
 				if (revents & (POLLOUT | POLLWRNORM))
 					handle_video_output(i);
 				if (revents & POLLPRI)
 					handle_video_event(i);
-				break;
-			case 1:
+
+			} else if (idx == ev[EV_DISPLAY]) {
 				if (revents & POLLOUT)
-					pfd[1].events &= ~POLLOUT;
-				break;
-			case 2:
+					pfd[ev[EV_DISPLAY]].events &= ~POLLOUT;
+
+			} else if (idx == ev[EV_SIGNAL]) {
 				handle_signal(i);
 				break;
 			}
@@ -1070,7 +1098,8 @@ handle_window_key(struct window *window, uint32_t time, uint32_t key,
 		break;
 
 	case KEY_F:
-		window_toggle_fullscreen(i->window);
+		if (i->window)
+			window_toggle_fullscreen(i->window);
 		break;
 	}
 }
@@ -1283,7 +1312,7 @@ int main(int argc, char **argv)
 
 	ret = setup_display(&inst);
 	if (ret)
-		goto err;
+		err("display server not available, continuing anyway...");
 
 	ret = video_set_control(&inst);
 	if (ret)
