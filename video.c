@@ -331,7 +331,7 @@ int video_set_control(struct instance *i)
 	}
 
 	control.id = V4L2_CID_MPEG_VIDC_VIDEO_CONTINUE_DATA_TRANSFER;
-	control.value = 1;
+	control.value = i->continue_data_transfer;
 
 	if (ioctl(i->video.fd, VIDIOC_S_CTRL, &control) < 0) {
 		err("failed to set data transfer mode: %m");

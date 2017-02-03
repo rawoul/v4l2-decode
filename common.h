@@ -123,6 +123,7 @@ struct instance {
 	int insert_sc;
 	int need_header;
 	int secure;
+	int continue_data_transfer;
 	char *save_path;
 	char *url;
 

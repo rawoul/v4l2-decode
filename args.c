@@ -36,6 +36,7 @@ void print_usage(char *name)
 	fprintf(stderr, "Where OPTS is a combination of:\n"
 	        "  -m <device>     video device (default /dev/video32)\n"
 	        "  -f <directory>  save frames to directory\n"
+	        "  -c              set \"continue data transfer\" flag\n"
 	        "  -d              output frames in decode order\n"
 	        "  -i              skip frames\n"
 	        "  -p              start paused\n"
@@ -55,8 +56,11 @@ int parse_args(struct instance *i, int argc, char **argv)
 
 	debug_level = 2;
 
-	while ((c = getopt(argc, argv, "dfhim:o:pqsv")) != -1) {
+	while ((c = getopt(argc, argv, "cdfhim:o:pqsv")) != -1) {
 		switch (c) {
+		case 'c':
+			i->continue_data_transfer = 1;
+			break;
 		case 'm':
 			i->video.name = optarg;
 			break;
