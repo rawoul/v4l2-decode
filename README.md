@@ -6,7 +6,7 @@ displayed using [wayland][], via the [linux-dmabuf][] protocol.
 
 Dependencies:
 
-* linux-msm-3.18 kernel headers
+* linux-msm-4.4 kernel headers
 * [wayland-client][wayland.git] library
 * [wayland-protocols][wayland-protocols.git] files
 * [ffmpeg 3.1][ffmpeg]
