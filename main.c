@@ -796,12 +796,13 @@ handle_video_capture(struct instance *i)
 	uint32_t flags;
 	uint64_t pts;
 	unsigned int bytesused;
+	struct msm_vidc_extradata_header *extradata;
 	bool busy;
 	int ret, n;
 
 	/* capture buffer is ready */
 
-	ret = video_dequeue_capture(i, &n, &bytesused, &flags, &tv);
+	ret = video_dequeue_capture(i, &n, &bytesused, &flags, &tv, &extradata);
 	if (ret < 0) {
 		err("dequeue capture buffer fail");
 		return ret;
@@ -871,8 +872,14 @@ handle_video_capture(struct instance *i)
 		pthread_mutex_unlock(&i->lock);
 
 		if (i->window) {
+			struct fb *fb = i->disp_buffers[n];
+
 			info("show buffer pts=%" PRIu64, pts);
-			window_show_buffer(i->window, i->disp_buffers[n],
+
+			if (extradata)
+				video_handle_extradata(i, extradata, fb);
+
+			window_show_buffer(i->window, fb,
 					   buffer_released, i);
 			busy = true;
 		}
@@ -1286,6 +1293,9 @@ int main(int argc, char **argv)
 	INIT_LIST_HEAD(&inst.video.pending_ts_list);
 	inst.video.pts_dts_delta = TIMESTAMP_NONE;
 	inst.video.cap_last_pts = TIMESTAMP_NONE;
+	inst.video.extradata_index = -1;
+	inst.video.extradata_size = 0;
+	inst.video.extradata_ion_fd = -1;
 
 	ret = stream_open(&inst);
 	if (ret)

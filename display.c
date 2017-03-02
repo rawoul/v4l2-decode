@@ -168,16 +168,33 @@ window_recenter(struct window *w)
 	struct fb *fb = w->buffer;
 	int video_w, video_h;
 	int output_w, output_h;
+	int ar_x, ar_y;
+	int src_x, src_y, src_w, src_h;
 
 	if (!fb || !w->viewport)
 		return 0;
 
-	if (fb->width * w->ar_y > fb->height * w->ar_x) {
-		video_w = fb->width * w->ar_x / w->ar_y;
-		video_h = fb->height;
+	if (fb->crop_w != 0 && fb->crop_h != 0) {
+		src_x = fb->crop_x;
+		src_y = fb->crop_y;
+		src_w = fb->crop_w;
+		src_h = fb->crop_h;
 	} else {
-		video_w = fb->width;
-		video_h = fb->height * w->ar_y / w->ar_x;
+		src_x = 0;
+		src_y = 0;
+		src_w = fb->width;
+		src_h = fb->height;
+	}
+
+	ar_x = w->ar_x * fb->ar_x;
+	ar_y = w->ar_y * fb->ar_y;
+
+	if (src_w * ar_y > src_h * ar_x) {
+		video_w = src_w * ar_x / ar_y;
+		video_h = src_h;
+	} else {
+		video_w = src_w;
+		video_h = src_h * ar_y / ar_x;
 	}
 
 	if (!w->size_set) {
@@ -192,6 +209,11 @@ window_recenter(struct window *w)
 	}
 
 	wp_viewport_set_destination(w->viewport, output_w, output_h);
+	wp_viewport_set_source(w->viewport,
+			       wl_fixed_from_int(src_x),
+			       wl_fixed_from_int(src_y),
+			       wl_fixed_from_int(src_w),
+			       wl_fixed_from_int(src_h));
 
 	return 1;
 }
@@ -457,6 +479,8 @@ window_create_buffer(struct window *window, int group,
 	fb->height = height;
 	fb->stride = stride;
 	fb->window = window;
+	fb->ar_x = 1;
+	fb->ar_y = 1;
 
 	params = zwp_linux_dmabuf_v1_create_params(window->display->dmabuf);
 	zwp_linux_buffer_params_v1_add(params, fb->fd, 0, fb->offset,

@@ -25,8 +25,10 @@
 
 #include <stdint.h>
 #include <linux/videodev2.h>
+#include <media/msm_vidc.h>
 
 struct instance;
+struct fb;
 
 /* Open the video decoder device */
 int video_open(struct instance *i, char *name);
@@ -69,7 +71,8 @@ int video_flush(struct instance *i, uint32_t flags);
  * dequeued buffer. */
 int video_dequeue_output(struct instance *i, int *n);
 int video_dequeue_capture(struct instance *i, int *n, unsigned int *bytesused,
-			  uint32_t *flags, struct timeval *ts);
+			  uint32_t *flags, struct timeval *ts,
+			  struct msm_vidc_extradata_header **extradata);
 
 /* Dequeue a pending event */
 int video_dequeue_event(struct instance *i, struct v4l2_event *ev);
@@ -79,6 +82,11 @@ int video_set_control(struct instance *i);
 int video_set_secure(struct instance *i);
 int video_set_dpb(struct instance *i,
 		  enum v4l2_mpeg_vidc_video_dpb_color_format format);
+
+/* extradata parsing */
+void video_handle_extradata(struct instance *i,
+			    struct msm_vidc_extradata_header *hdr,
+			    struct fb *fb);
 
 #endif /* INCLUDE_VIDEO_H */
 

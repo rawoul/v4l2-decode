@@ -106,6 +106,15 @@ struct video {
 	uint64_t cap_last_pts;
 	uint64_t pts_dts_delta;
 
+	/* Extradata stuff */
+	int extradata_index;
+	int extradata_size;
+	int extradata_ion_fd;
+	void *extradata_ion_addr;
+	int extradata_off[MAX_CAP_BUF];
+	void *extradata_addr[MAX_CAP_BUF];
+
+	/* Metrics */
 	unsigned long total_captured;
 };
 

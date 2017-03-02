@@ -35,12 +35,15 @@
 #include <linux/ion.h>
 #include <linux/msm_ion.h>
 #include <media/msm_media_info.h>
+#include <media/msm_vidc.h>
 
 #include "common.h"
 
 #define DBG_TAG "   vid"
 
 #define CASE(ENUM) case ENUM: return #ENUM;
+
+#define EXTRADATA_IDX(__num_planes) ((__num_planes) ? (__num_planes) - 1 : 0)
 
 static const struct {
 	uint32_t mask;
@@ -151,6 +154,66 @@ static const char *v4l2_colorspace_to_string(enum v4l2_colorspace cspace)
 	CASE(V4L2_COLORSPACE_JPEG)
 	CASE(V4L2_COLORSPACE_SRGB)
 	default: return "unknown";
+	}
+}
+
+static const char *extradata_type_to_string(int type)
+{
+	switch (type) {
+	CASE(MSM_VIDC_EXTRADATA_NONE)
+	CASE(MSM_VIDC_EXTRADATA_MB_QUANTIZATION)
+	CASE(MSM_VIDC_EXTRADATA_INTERLACE_VIDEO)
+	CASE(MSM_VIDC_EXTRADATA_VC1_FRAMEDISP)
+	CASE(MSM_VIDC_EXTRADATA_VC1_SEQDISP)
+	CASE(MSM_VIDC_EXTRADATA_TIMESTAMP)
+	CASE(MSM_VIDC_EXTRADATA_S3D_FRAME_PACKING)
+	CASE(MSM_VIDC_EXTRADATA_FRAME_RATE)
+	CASE(MSM_VIDC_EXTRADATA_PANSCAN_WINDOW)
+	CASE(MSM_VIDC_EXTRADATA_RECOVERY_POINT_SEI)
+	CASE(MSM_VIDC_EXTRADATA_MPEG2_SEQDISP)
+	CASE(MSM_VIDC_EXTRADATA_STREAM_USERDATA)
+	CASE(MSM_VIDC_EXTRADATA_FRAME_QP)
+	CASE(MSM_VIDC_EXTRADATA_FRAME_BITS_INFO)
+	CASE(MSM_VIDC_EXTRADATA_VQZIP_SEI)
+	CASE(MSM_VIDC_EXTRADATA_ROI_QP)
+	CASE(MSM_VIDC_EXTRADATA_MASTERING_DISPLAY_COLOUR_SEI)
+	CASE(MSM_VIDC_EXTRADATA_CONTENT_LIGHT_LEVEL_SEI)
+	CASE(MSM_VIDC_EXTRADATA_PQ_INFO)
+	CASE(MSM_VIDC_EXTRADATA_INPUT_CROP)
+	CASE(MSM_VIDC_EXTRADATA_OUTPUT_CROP)
+	CASE(MSM_VIDC_EXTRADATA_DIGITAL_ZOOM)
+	CASE(MSM_VIDC_EXTRADATA_VPX_COLORSPACE_INFO)
+	CASE(MSM_VIDC_EXTRADATA_MULTISLICE_INFO)
+	CASE(MSM_VIDC_EXTRADATA_NUM_CONCEALED_MB)
+	CASE(MSM_VIDC_EXTRADATA_INDEX)
+	CASE(MSM_VIDC_EXTRADATA_ASPECT_RATIO)
+	CASE(MSM_VIDC_EXTRADATA_METADATA_LTR)
+	CASE(MSM_VIDC_EXTRADATA_METADATA_FILLER)
+	CASE(MSM_VIDC_EXTRADATA_METADATA_MBI)
+	CASE(MSM_VIDC_EXTRADATA_VUI_DISPLAY_INFO)
+	CASE(MSM_VIDC_EXTRADATA_YUVSTATS_INFO)
+	default: return "Unknown";
+	}
+}
+
+static const char *extradata_interlace_format_to_string(enum msm_vidc_interlace_type format)
+{
+	switch (format) {
+	CASE(MSM_VIDC_INTERLACE_FRAME_PROGRESSIVE)
+	CASE(MSM_VIDC_INTERLACE_INTERLEAVE_FRAME_TOPFIELDFIRST)
+	CASE(MSM_VIDC_INTERLACE_INTERLEAVE_FRAME_BOTTOMFIELDFIRST)
+	CASE(MSM_VIDC_INTERLACE_FRAME_TOPFIELDFIRST)
+	CASE(MSM_VIDC_INTERLACE_FRAME_BOTTOMFIELDFIRST)
+	default : return "Unknown";
+	}
+}
+
+static const char *extradata_interlace_color_format_to_string(unsigned int format)
+{
+	switch (format) {
+	CASE(MSM_VIDC_HAL_INTERLACE_COLOR_FORMAT_NV12)
+	CASE(MSM_VIDC_HAL_INTERLACE_COLOR_FORMAT_NV12_UBWC)
+	default: return "Unknown";
 	}
 }
 
@@ -354,6 +417,49 @@ int video_set_control(struct instance *i)
 		return -1;
 	}
 
+	control.id = V4L2_CID_MPEG_VIDC_VIDEO_EXTRADATA;
+	control.value = V4L2_MPEG_VIDC_EXTRADATA_INTERLACE_VIDEO;
+
+	if (ioctl(i->video.fd, VIDIOC_S_CTRL, &control) < 0) {
+		err("failed to enable interlace extradata: %m");
+		return -1;
+	}
+
+	control.id = V4L2_CID_MPEG_VIDC_VIDEO_EXTRADATA;
+	control.value = V4L2_MPEG_VIDC_EXTRADATA_OUTPUT_CROP;
+
+	if (ioctl(i->video.fd, VIDIOC_S_CTRL, &control) < 0) {
+		err("failed to enable output crop extradata: %m");
+		return -1;
+	}
+
+	control.id = V4L2_CID_MPEG_VIDC_VIDEO_EXTRADATA;
+	control.value = V4L2_MPEG_VIDC_EXTRADATA_ASPECT_RATIO;
+
+	if (ioctl(i->video.fd, VIDIOC_S_CTRL, &control) < 0) {
+		err("failed to enable aspect ratio extradata: %m");
+		return -1;
+	}
+
+	control.id = V4L2_CID_MPEG_VIDC_VIDEO_EXTRADATA;
+	control.value = V4L2_MPEG_VIDC_EXTRADATA_FRAME_RATE;
+
+	if (ioctl(i->video.fd, VIDIOC_S_CTRL, &control) < 0) {
+		err("failed to enable framerate extradata: %m");
+		return -1;
+	}
+
+#if 0
+	/* FIXME : Use this when QCOM has fixed the bug */
+	control.id = V4L2_CID_MPEG_VIDC_VIDEO_EXTRADATA;
+	control.value = V4L2_MPEG_VIDC_EXTRADATA_DISPLAY_COLOUR_SEI;
+
+	if (ioctl(i->video.fd, VIDIOC_S_CTRL, &control) < 0) {
+		err("failed to enable display colour sei extradata: %m");
+		return -1;
+	}
+#endif
+
 	return 0;
 }
 
@@ -398,6 +504,147 @@ int video_set_framerate(struct instance *i, int num, int den)
 	}
 
 	return 0;
+}
+
+static void video_handle_extradata_payload(struct instance *i,
+					   enum msm_vidc_extradata_type type,
+					   void *data, int size, struct fb *fb)
+{
+	switch (type) {
+	case MSM_VIDC_EXTRADATA_OUTPUT_CROP: {
+		struct msm_vidc_output_crop_payload *payload = data;
+
+		if (size != sizeof (*payload)) {
+			dbg("extradata: Invalid data size for %s",
+			    extradata_type_to_string(type));
+			return;
+		}
+
+		dbg("extradata: %s top=%u left=%u "
+		    "display_width=%u display_height=%u width=%u height=%u",
+		    extradata_type_to_string(type),
+		    payload->top, payload->left,
+		    payload->display_width, payload->display_height,
+		    payload->width, payload->height);
+
+		fb->crop_x = payload->left;
+		fb->crop_y = payload->top;
+		fb->crop_w = payload->display_width;
+		fb->crop_h = payload->display_height;
+		break;
+	}
+
+	case MSM_VIDC_EXTRADATA_ASPECT_RATIO: {
+		struct msm_vidc_aspect_ratio_payload *payload = data;
+
+		if (size != sizeof (*payload)) {
+			dbg("extradata: Invalid data size for %s",
+			    extradata_type_to_string(type));
+			return;
+		}
+
+		dbg("extradata: %s aspect_width=%u aspect_height=%u",
+		    extradata_type_to_string(type),
+		    payload->aspect_width, payload->aspect_height);
+
+		fb->ar_x = payload->aspect_width;
+		fb->ar_y = payload->aspect_height;
+		break;
+	}
+
+	case MSM_VIDC_EXTRADATA_INTERLACE_VIDEO: {
+		struct msm_vidc_interlace_payload *payload = data;
+
+		if (size != sizeof (*payload)) {
+			dbg("extradata: Invalid data size for %s",
+			    extradata_type_to_string(type));
+			return;
+		}
+
+		dbg("extradata: %s format=%s color_format=%s",
+		    extradata_type_to_string(type),
+		    extradata_interlace_format_to_string(payload->format),
+		    extradata_interlace_color_format_to_string(payload->color_format));
+
+		break;
+	}
+
+	case MSM_VIDC_EXTRADATA_MASTERING_DISPLAY_COLOUR_SEI: {
+		struct msm_vidc_mastering_display_colour_sei_payload *payload = data;
+
+		if (size != sizeof (*payload)) {
+			dbg("extradata: Invalid data size for %s",
+			    extradata_type_to_string(type));
+			return;
+		}
+
+		dbg("extradata: %s nDisplayPrimariesX={%u, %u, %u} "
+		    "nDisplayPrimariesY={%u, %u, %u} nWhitePointX=%u "
+		    "nWhitePointY=%u nMaxDisplayMasteringLuminance=%u "
+		    "nMinDisplayMasteringLuminance=%u",
+		    extradata_type_to_string(type), payload->nDisplayPrimariesX[0],
+		    payload->nDisplayPrimariesX[1], payload->nDisplayPrimariesX[2],
+		    payload->nDisplayPrimariesY[0], payload->nDisplayPrimariesY[1],
+		    payload->nDisplayPrimariesY[2], payload->nWhitePointX,
+		    payload->nWhitePointY, payload->nMaxDisplayMasteringLuminance,
+		    payload->nMinDisplayMasteringLuminance);
+
+		break;
+	}
+
+	case MSM_VIDC_EXTRADATA_FRAME_RATE: {
+		struct msm_vidc_framerate_payload *payload = data;
+
+		if (size != sizeof (*payload)) {
+			dbg("extradata: Invalid data size for %s",
+			    extradata_type_to_string(type));
+			return;
+		}
+
+		int framerate_num = payload->frame_rate;
+		int framerate_den = 0x10000;
+
+		dbg("extradata: %s frame_rate=%.3f",
+		    extradata_type_to_string(type),
+		    (float)framerate_num / (float)framerate_den);
+
+		break;
+	}
+
+	default:
+		dbg("extradata: unhandled extradata index %s (0x%02x)",
+		    extradata_type_to_string(type), type);
+		break;
+	}
+}
+
+void video_handle_extradata(struct instance *i,
+			    struct msm_vidc_extradata_header *hdr,
+			    struct fb *fb)
+{
+	uint32_t left = i->video.extradata_size;
+
+	if (!hdr)
+		return;
+
+	while (left >= sizeof (*hdr) && left >= hdr->size &&
+	       hdr->type != MSM_VIDC_EXTRADATA_NONE) {
+		if (hdr->type == MSM_VIDC_EXTRADATA_INDEX) {
+			struct msm_vidc_extradata_index *payload =
+				(void *)hdr->data;
+
+			video_handle_extradata_payload(i, payload->type,
+						       ((uint8_t *)hdr->data) + sizeof (payload->type),
+						       hdr->data_size - sizeof (payload->type), fb);
+		} else {
+			video_handle_extradata_payload(i, hdr->type,
+						       hdr->data,
+						       hdr->data_size, fb);
+		}
+
+		left -= hdr->size;
+		hdr = (void *)((uint8_t*)hdr + hdr->size);
+	}
 }
 
 static int video_count_capture_queued_bufs(struct video *vid)
@@ -506,14 +753,14 @@ int video_queue_buf_cap(struct instance *i, int n)
 	buf.m.planes[0].bytesused = vid->cap_buf_size[0];
 	buf.m.planes[0].data_offset = 0;
 
-	buf.m.planes[1].m.userptr = i->secure ?
-		(unsigned long)vid->cap_ion_fd :
-		(unsigned long)vid->cap_ion_addr;
-	buf.m.planes[1].reserved[0] = vid->cap_ion_fd;
-	buf.m.planes[1].reserved[1] = vid->cap_buf_off[n][1];
-	buf.m.planes[1].length = vid->cap_buf_size[1];
-	buf.m.planes[1].bytesused = vid->cap_buf_size[1];
-	buf.m.planes[1].data_offset = 0;
+	if (vid->extradata_index) { // Should be 1
+		buf.m.planes[vid->extradata_index].m.userptr = (unsigned long)vid->extradata_ion_addr;
+		buf.m.planes[vid->extradata_index].reserved[0] = vid->extradata_ion_fd;
+		buf.m.planes[vid->extradata_index].reserved[1] = vid->extradata_off[n];
+		buf.m.planes[vid->extradata_index].length = vid->extradata_size;
+		buf.m.planes[vid->extradata_index].bytesused = 0;
+		buf.m.planes[vid->extradata_index].data_offset = 0;
+	}
 
 	if (ioctl(vid->fd, VIDIOC_QBUF, &buf) < 0) {
 		err("failed to queue %s buffer (index=%d): %m",
@@ -584,8 +831,10 @@ int video_dequeue_output(struct instance *i, int *n)
 }
 
 int video_dequeue_capture(struct instance *i, int *n, unsigned int *bytesused,
-			  uint32_t *flags, struct timeval *ts)
+			  uint32_t *flags, struct timeval *ts,
+			  struct msm_vidc_extradata_header **extradata)
 {
+	struct video *vid = &i->video;
 	struct v4l2_buffer buf;
 	struct v4l2_plane planes[CAP_PLANES];
 
@@ -605,6 +854,13 @@ int video_dequeue_capture(struct instance *i, int *n, unsigned int *bytesused,
 		*flags = buf.flags;
 	if (ts)
 		*ts = buf.timestamp;
+
+	if (extradata) {
+		if (vid->extradata_index >= 0)
+			*extradata = vid->extradata_addr[buf.index];
+		else
+			*extradata = NULL;
+	}
 
 	return 0;
 }
@@ -723,6 +979,33 @@ static int get_msm_color_format(uint32_t fourcc)
 	return -1;
 }
 
+static int setup_extradata(struct instance *i, int index, int size)
+{
+	struct video *vid = &i->video;
+	int off = 0;
+
+	vid->extradata_index = index;
+	vid->extradata_size = size;
+
+	if (vid->extradata_ion_fd < 0) {
+		vid->extradata_ion_fd = alloc_ion_buffer(i, size * MAX_CAP_BUF, 0);
+		vid->extradata_ion_addr = mmap(NULL,
+					       size * MAX_CAP_BUF,
+					       PROT_READ|PROT_WRITE,
+					       MAP_SHARED,
+					       vid->extradata_ion_fd,
+					       0);
+
+		for (int i = 0; i < MAX_CAP_BUF; i++) {
+			vid->extradata_off[i] = off;
+			vid->extradata_addr[i] = vid->extradata_ion_addr + off;
+			off += size;
+		}
+	}
+
+	return 0;
+}
+
 int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 {
 	struct video *vid = &i->video;
@@ -735,7 +1018,7 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 	int ion_size;
 	uint32_t ion_flags;
 	void *buf_addr;
-	int idx, n;
+	int idx, n, extra_idx;
 
 	type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 
@@ -860,6 +1143,15 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 
 	dbg("%s: succesfully mmapped %d buffers", buf_type_to_string(type),
 	    vid->cap_buf_cnt);
+
+	extra_idx = EXTRADATA_IDX(fmt.fmt.pix_mp.num_planes);
+	if (extra_idx && (extra_idx < VIDEO_MAX_PLANES)) {
+		dbg("%s: extradata plane is %d (size=%d)",
+		    buf_type_to_string(type), extra_idx,
+		    fmt.fmt.pix_mp.plane_fmt[extra_idx].sizeimage);
+		setup_extradata(i, extra_idx,
+				fmt.fmt.pix_mp.plane_fmt[extra_idx].sizeimage);
+	}
 
 	return 0;
 }

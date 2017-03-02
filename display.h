@@ -23,6 +23,8 @@ struct fb {
 	int height;
 	int stride;
 	int busy;
+	int ar_x, ar_y;
+	int crop_x, crop_y, crop_w, crop_h;
 	uint32_t format;
 	struct wl_buffer *buffer;
 	struct wp_presentation_feedback *presentation_feedback;
