@@ -23,7 +23,7 @@ CC = $(CROSS)gcc
 AR = $(CROSS)ar rc
 PKG_CONFIG ?= pkg-config
 
-WAYLAND_SCANNER := $(shell $(PKG_CONFIG) --variable=wayland_scanner wayland-scanner)
+WAYLAND_SCANNER ?= wayland-scanner
 WAYLAND_PROTOCOLS_DATADIR := $(shell $(PKG_CONFIG) --variable=pkgdatadir wayland-protocols)
 
 GENERATED_SOURCES = \
