@@ -21,6 +21,7 @@ struct display {
 	struct wl_compositor *compositor;
 	struct wl_seat *seat;
 	struct wl_keyboard *keyboard;
+	struct wl_shell *wl_shell;
 	struct zxdg_shell_v6 *xdg_shell;
 	struct wl_scaler *scaler;
 	struct wp_viewporter *viewporter;
@@ -43,6 +44,7 @@ struct window {
 	struct wl_surface *surface;
 	struct wl_viewport *legacy_viewport;
 	struct wp_viewport *viewport;
+	struct wl_shell_surface *shell_surface;
 	struct zxdg_surface_v6 *xdg_surface;
 	struct zxdg_toplevel_v6 *xdg_toplevel;
 	struct fb *buffer;
@@ -330,6 +332,43 @@ static const struct zxdg_surface_v6_listener xdg_surface_listener = {
 	xdg_surface_handle_configure,
 };
 
+
+static void
+shell_surface_handle_ping(void *data, struct wl_shell_surface *shell_surface,
+			  uint32_t serial)
+{
+	wl_shell_surface_pong(shell_surface, serial);
+}
+
+static void
+shell_surface_handle_configure(void *data, struct wl_shell_surface *shell_surface,
+			       uint32_t edges, int32_t width, int32_t height)
+{
+	struct window *w = data;
+
+	if (w->width == 0 || w->height == 0)
+		return;
+
+	w->width = width;
+	w->height = height;
+	w->size_set = true;
+	w->configured = true;
+
+	if (window_recenter(w))
+		window_commit(w);
+}
+
+static void
+shell_surface_handle_popup_done(void *data, struct wl_shell_surface *shell_surface)
+{
+}
+
+static const struct wl_shell_surface_listener shell_surface_listener = {
+	shell_surface_handle_ping,
+	shell_surface_handle_configure,
+	shell_surface_handle_popup_done
+};
+
 struct window *
 display_create_window(struct display *display)
 {
@@ -360,6 +399,18 @@ display_create_window(struct display *display)
 		zxdg_toplevel_v6_set_title(window->xdg_toplevel, "v4l-decode");
 
 		wl_surface_commit(window->surface);
+	} else if (display->wl_shell) {
+		window->shell_surface =
+			wl_shell_get_shell_surface(display->wl_shell,
+						   window->surface);
+
+		wl_shell_surface_add_listener(window->shell_surface,
+					      &shell_surface_listener, window);
+
+		wl_shell_surface_set_title(window->shell_surface, "v4l-decode");
+		wl_shell_surface_set_toplevel(window->shell_surface);
+
+		window->configured = true;
 	}
 
 	if (display->viewporter) {
@@ -400,6 +451,8 @@ window_destroy(struct window *window)
 		zxdg_toplevel_v6_destroy(window->xdg_toplevel);
 	if (window->xdg_surface)
 		zxdg_surface_v6_destroy(window->xdg_surface);
+	if (window->shell_surface)
+		wl_shell_surface_destroy(window->shell_surface);
 	if (window->viewport)
 		wp_viewport_destroy(window->viewport);
 	if (window->legacy_viewport)
@@ -679,6 +732,9 @@ registry_handle_global(void *data, struct wl_registry *registry,
 						&zxdg_shell_v6_interface, 1);
 		zxdg_shell_v6_add_listener(d->xdg_shell,
 					   &xdg_shell_listener, d);
+	} else if (!strcmp(interface, "wl_shell")) {
+		d->wl_shell = wl_registry_bind(registry, id,
+					       &wl_shell_interface, 1);
 	} else if (strcmp(interface, "zwp_linux_dmabuf_v1") == 0) {
 		d->dmabuf = wl_registry_bind(registry, id,
 					     &zwp_linux_dmabuf_v1_interface, 1);
@@ -721,6 +777,8 @@ display_destroy(struct display *display)
 		wl_compositor_destroy(display->compositor);
 	if (display->xdg_shell)
 		zxdg_shell_v6_destroy(display->xdg_shell);
+	if (display->wl_shell)
+		wl_shell_destroy(display->wl_shell);
 	if (display->dmabuf)
 		zwp_linux_dmabuf_v1_destroy(display->dmabuf);
 	if (display->registry)
@@ -750,8 +808,14 @@ display_create(void)
 				 display);
 
 	wl_display_roundtrip(display->display);
-	if (!display->xdg_shell || !display->dmabuf) {
-		err("missing wayland globals");
+
+	if (!display->xdg_shell && !display->wl_shell) {
+		err("missing wayland shell");
+		goto fail;
+	}
+
+	if (!display->dmabuf) {
+		err("missing wayland dmabuf");
 		goto fail;
 	}
 
