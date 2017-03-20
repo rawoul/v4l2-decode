@@ -12,6 +12,7 @@
 #include "presentation-time-client-protocol.h"
 #include "xdg-shell-unstable-v6-client-protocol.h"
 #include "linux-dmabuf-unstable-v1-client-protocol.h"
+#include "linux-dmabuf-client-protocol.h"
 
 #define DBG_TAG "  disp"
 
@@ -26,6 +27,7 @@ struct display {
 	struct wl_scaler *scaler;
 	struct wp_viewporter *viewporter;
 	struct wp_presentation *presentation;
+	struct zlinux_dmabuf *dmabuf_legacy;
 	struct zwp_linux_dmabuf_v1 *dmabuf;
 	uint32_t drm_formats[32];
 	int compositor_version;
@@ -511,6 +513,38 @@ static const struct zwp_linux_buffer_params_v1_listener params_listener = {
 	create_failed
 };
 
+static void
+dmabuf_legacy_create_succeeded(void *data,
+			       struct zlinux_buffer_params *params,
+			       struct wl_buffer *new_buffer)
+{
+	struct fb *fb = data;
+
+	fb->buffer = new_buffer;
+	wl_buffer_add_listener(fb->buffer, &buffer_listener, fb);
+
+	zlinux_buffer_params_destroy(params);
+}
+
+static void
+dmabuf_legacy_create_failed(void *data, struct zlinux_buffer_params *params)
+{
+	struct fb *fb = data;
+
+	fb->buffer = NULL;
+
+	zlinux_buffer_params_destroy(params);
+
+	err("zlinux_buffer_params.create failed");
+
+	fb->window->display->running = 0;
+}
+
+static const struct zlinux_buffer_params_listener dmabuf_legacy_params_listener = {
+	dmabuf_legacy_create_succeeded,
+	dmabuf_legacy_create_failed
+};
+
 static int
 format_is_supported(struct display *display, uint32_t format)
 {
@@ -529,11 +563,11 @@ window_create_buffer(struct window *window, int group, int index, int fd,
 		     uint32_t format, int width, int height, int n_planes,
 		     const int *plane_offsets, const int *plane_strides)
 {
-	struct zwp_linux_buffer_params_v1 *params;
+	struct display *display = window->display;
 	struct fb *fb;
 
 #if 0
-	if (!format_is_supported(window->display, format)) {
+	if (!format_is_supported(display, format)) {
 		err("unsupported display format");
 		return NULL;
 	}
@@ -559,19 +593,35 @@ window_create_buffer(struct window *window, int group, int index, int fd,
 	memcpy(fb->offsets, plane_offsets, n_planes * sizeof (int));
 	memcpy(fb->strides, plane_strides, n_planes * sizeof (int));
 
-	params = zwp_linux_dmabuf_v1_create_params(window->display->dmabuf);
+	if (display->dmabuf) {
+		struct zwp_linux_buffer_params_v1 *params =
+			zwp_linux_dmabuf_v1_create_params(display->dmabuf);
 
-	for (int i = 0; i < fb->n_planes; i++) {
-		zwp_linux_buffer_params_v1_add(params, fb->fd, i,
-					       fb->offsets[i],
-					       fb->strides[i], 0, 0);
+		for (int i = 0; i < fb->n_planes; i++) {
+			zwp_linux_buffer_params_v1_add(params, fb->fd, i,
+						       fb->offsets[i],
+						       fb->strides[i], 0, 0);
+		}
+
+		zwp_linux_buffer_params_v1_add_listener(params, &params_listener, fb);
+		zwp_linux_buffer_params_v1_create(params, fb->width, fb->height,
+						  fb->format, 0);
+	} else {
+		struct zlinux_buffer_params *params =
+			zlinux_dmabuf_create_params(display->dmabuf_legacy);
+
+		for (int i = 0; i < fb->n_planes; i++) {
+			zlinux_buffer_params_add(params, fb->fd, i,
+						 fb->offsets[i],
+						 fb->strides[i], 0, 0);
+		}
+
+		zlinux_buffer_params_add_listener(params, &dmabuf_legacy_params_listener, fb);
+		zlinux_buffer_params_create(params, fb->width, fb->height,
+					    fb->format, 0);
 	}
 
-	zwp_linux_buffer_params_v1_add_listener(params, &params_listener, fb);
-	zwp_linux_buffer_params_v1_create(params, fb->width, fb->height,
-					  fb->format, 0);
-
-	wl_display_roundtrip(window->display->display);
+	wl_display_roundtrip(display->display);
 
 	if (!fb->buffer) {
 		fb_destroy(fb);
@@ -610,6 +660,20 @@ dmabuf_format(void *data, struct zwp_linux_dmabuf_v1 *zwp_linux_dmabuf,
 
 static const struct zwp_linux_dmabuf_v1_listener dmabuf_listener = {
 	dmabuf_format
+};
+
+static void
+dmabuf_legacy_format(void *data, struct zlinux_dmabuf *zlinux_dmabuf,
+		     uint32_t format)
+{
+	struct display *d = data;
+
+	assert(d->drm_format_count <= 32);
+	d->drm_formats[d->drm_format_count++] = format;
+}
+
+static const struct zlinux_dmabuf_listener dmabuf_legacy_listener = {
+	dmabuf_legacy_format
 };
 
 static void
@@ -746,11 +810,16 @@ registry_handle_global(void *data, struct wl_registry *registry,
 	} else if (!strcmp(interface, "wl_shell")) {
 		d->wl_shell = wl_registry_bind(registry, id,
 					       &wl_shell_interface, 1);
-	} else if (strcmp(interface, "zwp_linux_dmabuf_v1") == 0) {
+	} else if (!strcmp(interface, "zwp_linux_dmabuf_v1")) {
 		d->dmabuf = wl_registry_bind(registry, id,
 					     &zwp_linux_dmabuf_v1_interface, 1);
 		zwp_linux_dmabuf_v1_add_listener(d->dmabuf, &dmabuf_listener,
 						 d);
+	} else if (!strcmp(interface, "zlinux_dmabuf")) {
+		d->dmabuf_legacy = wl_registry_bind(registry, id,
+						    &zlinux_dmabuf_interface, 1);
+		zlinux_dmabuf_add_listener(d->dmabuf_legacy,
+					   &dmabuf_legacy_listener, d);
 	} else if (!strcmp(interface, "wl_seat") && !d->seat) {
 		d->seat_version = MIN(version, 5);
 		d->seat = wl_registry_bind(registry, id, &wl_seat_interface,
@@ -792,6 +861,8 @@ display_destroy(struct display *display)
 		wl_shell_destroy(display->wl_shell);
 	if (display->dmabuf)
 		zwp_linux_dmabuf_v1_destroy(display->dmabuf);
+	if (display->dmabuf_legacy)
+		zlinux_dmabuf_destroy(display->dmabuf_legacy);
 	if (display->registry)
 		wl_registry_destroy(display->registry);
 	if (display->display)
@@ -825,7 +896,7 @@ display_create(void)
 		goto fail;
 	}
 
-	if (!display->dmabuf) {
+	if (!display->dmabuf && !display->dmabuf_legacy) {
 		err("missing wayland dmabuf");
 		goto fail;
 	}

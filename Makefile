@@ -35,6 +35,8 @@ GENERATED_SOURCES = \
   protocol/presentation-time-client-protocol.h \
   protocol/xdg-shell-unstable-v6-protocol.c \
   protocol/xdg-shell-unstable-v6-client-protocol.h \
+  protocol/linux-dmabuf-protocol.c \
+  protocol/linux-dmabuf-client-protocol.h \
   protocol/linux-dmabuf-unstable-v1-protocol.c \
   protocol/linux-dmabuf-unstable-v1-client-protocol.h
 
