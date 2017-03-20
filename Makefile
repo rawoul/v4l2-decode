@@ -27,6 +27,8 @@ WAYLAND_SCANNER ?= wayland-scanner
 WAYLAND_PROTOCOLS_DATADIR := $(shell $(PKG_CONFIG) --variable=pkgdatadir wayland-protocols)
 
 GENERATED_SOURCES = \
+  protocol/scaler-protocol.c \
+  protocol/scaler-client-protocol.h \
   protocol/viewporter-protocol.c \
   protocol/viewporter-client-protocol.h \
   protocol/presentation-time-protocol.c \
@@ -79,4 +81,13 @@ protocol/%-server-protocol.h : $(WAYLAND_PROTOCOLS_DATADIR)/$$(call protostabili
 	mkdir -p $(@D) && $(WAYLAND_SCANNER) server-header < $< > $@
 
 protocol/%-client-protocol.h : $(WAYLAND_PROTOCOLS_DATADIR)/$$(call protostability,$$*)/$$(call protoname,$$*)/$$*.xml
+	mkdir -p $(@D) && $(WAYLAND_SCANNER) client-header < $< > $@
+
+protocol/%-protocol.c : protocol/%.xml
+	mkdir -p $(@D) && $(WAYLAND_SCANNER) code < $< > $@
+
+protocol/%-server-protocol.h : protocol/%.xml
+	mkdir -p $(@D) && $(WAYLAND_SCANNER) server-header < $< > $@
+
+protocol/%-client-protocol.h : protocol/%.xml
 	mkdir -p $(@D) && $(WAYLAND_SCANNER) client-header < $< > $@

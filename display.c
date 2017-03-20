@@ -7,6 +7,7 @@
 #include <wayland-client.h>
 
 #include "common.h"
+#include "scaler-client-protocol.h"
 #include "viewporter-client-protocol.h"
 #include "presentation-time-client-protocol.h"
 #include "xdg-shell-unstable-v6-client-protocol.h"
@@ -21,6 +22,7 @@ struct display {
 	struct wl_seat *seat;
 	struct wl_keyboard *keyboard;
 	struct zxdg_shell_v6 *xdg_shell;
+	struct wl_scaler *scaler;
 	struct wp_viewporter *viewporter;
 	struct wp_presentation *presentation;
 	struct zwp_linux_dmabuf_v1 *dmabuf;
@@ -39,6 +41,7 @@ struct window {
 
 	struct display *display;
 	struct wl_surface *surface;
+	struct wl_viewport *legacy_viewport;
 	struct wp_viewport *viewport;
 	struct zxdg_surface_v6 *xdg_surface;
 	struct zxdg_toplevel_v6 *xdg_toplevel;
@@ -171,7 +174,7 @@ window_recenter(struct window *w)
 	int ar_x, ar_y;
 	int src_x, src_y, src_w, src_h;
 
-	if (!fb || !w->viewport)
+	if (!fb || (!w->viewport && !w->legacy_viewport))
 		return 0;
 
 	if (fb->crop_w != 0 && fb->crop_h != 0) {
@@ -208,12 +211,21 @@ window_recenter(struct window *w)
 		output_h = w->height;
 	}
 
-	wp_viewport_set_destination(w->viewport, output_w, output_h);
-	wp_viewport_set_source(w->viewport,
-			       wl_fixed_from_int(src_x),
-			       wl_fixed_from_int(src_y),
-			       wl_fixed_from_int(src_w),
-			       wl_fixed_from_int(src_h));
+	if (w->viewport) {
+		wp_viewport_set_destination(w->viewport, output_w, output_h);
+		wp_viewport_set_source(w->viewport,
+				       wl_fixed_from_int(src_x),
+				       wl_fixed_from_int(src_y),
+				       wl_fixed_from_int(src_w),
+				       wl_fixed_from_int(src_h));
+	} else {
+		wl_viewport_set(w->legacy_viewport,
+				wl_fixed_from_int(src_x),
+				wl_fixed_from_int(src_y),
+				wl_fixed_from_int(src_w),
+				wl_fixed_from_int(src_h),
+				output_w, output_h);
+	}
 
 	return 1;
 }
@@ -354,6 +366,10 @@ display_create_window(struct display *display)
 		window->viewport =
 			wp_viewporter_get_viewport(display->viewporter,
 						   window->surface);
+	} else if (display->scaler) {
+		window->legacy_viewport =
+			wl_scaler_get_viewport(display->scaler,
+					       window->surface);
 	}
 
 	wl_list_insert(&display->window_list, &window->link);
@@ -386,6 +402,8 @@ window_destroy(struct window *window)
 		zxdg_surface_v6_destroy(window->xdg_surface);
 	if (window->viewport)
 		wp_viewport_destroy(window->viewport);
+	if (window->legacy_viewport)
+		wl_viewport_destroy(window->legacy_viewport);
 
 	wl_surface_destroy(window->surface);
 
@@ -518,7 +536,7 @@ window_show_buffer(struct window *window, struct fb *fb,
 
 static void
 dmabuf_format(void *data, struct zwp_linux_dmabuf_v1 *zwp_linux_dmabuf,
-              uint32_t format)
+	      uint32_t format)
 {
 	struct display *d = data;
 
@@ -637,7 +655,7 @@ static const struct wl_seat_listener seat_listener = {
 
 static void
 registry_handle_global(void *data, struct wl_registry *registry,
-                       uint32_t id, const char *interface, uint32_t version)
+		       uint32_t id, const char *interface, uint32_t version)
 {
 	struct display *d = data;
 
@@ -649,6 +667,9 @@ registry_handle_global(void *data, struct wl_registry *registry,
 	} else if (!strcmp(interface, "wp_viewporter")) {
 		d->viewporter = wl_registry_bind(registry, id,
 						 &wp_viewporter_interface, 1);
+	} else if (!strcmp(interface, "wl_scaler")) {
+		d->scaler = wl_registry_bind(registry, id,
+					     &wl_scaler_interface, 1);
 	} else if (!strcmp(interface, "wp_presentation")) {
 		d->presentation = wl_registry_bind(registry, id,
 						   &wp_presentation_interface,
@@ -660,9 +681,9 @@ registry_handle_global(void *data, struct wl_registry *registry,
 					   &xdg_shell_listener, d);
 	} else if (strcmp(interface, "zwp_linux_dmabuf_v1") == 0) {
 		d->dmabuf = wl_registry_bind(registry, id,
-		                             &zwp_linux_dmabuf_v1_interface, 1);
+					     &zwp_linux_dmabuf_v1_interface, 1);
 		zwp_linux_dmabuf_v1_add_listener(d->dmabuf, &dmabuf_listener,
-		                                 d);
+						 d);
 	} else if (!strcmp(interface, "wl_seat") && !d->seat) {
 		d->seat_version = MIN(version, 5);
 		d->seat = wl_registry_bind(registry, id, &wl_seat_interface,
@@ -690,6 +711,8 @@ display_destroy(struct display *display)
 		wl_seat_destroy(display->seat);
 	}
 
+	if (display->scaler)
+		wl_scaler_destroy(display->scaler);
 	if (display->viewporter)
 		wp_viewporter_destroy(display->viewporter);
 	if (display->presentation)
