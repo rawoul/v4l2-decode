@@ -160,10 +160,10 @@ window_commit(struct window *w)
 			&presentation_feedback_listener, fb);
 	}
 
+	if (fb)
+		fb->busy = 1;
 
 	wl_surface_commit(w->surface);
-
-	fb->busy = 1;
 }
 
 static int
