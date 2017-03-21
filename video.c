@@ -1100,7 +1100,6 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 		int offset = idx * buffer_size;
 		for (n = 0; n < pix->num_planes; n++) {
 			vid->cap_buf_off[idx][n] = offset;
-			vid->cap_buf_addr[idx][n] = vid->cap_ion_addr + offset;
 			offset += vid->cap_buf_size[n];
 		}
 	}

@@ -95,7 +95,6 @@ struct video {
 	int cap_buf_size[CAP_PLANES];
 	int cap_buf_stride[CAP_PLANES];
 	int cap_buf_off[MAX_CAP_BUF][CAP_PLANES];
-	char *cap_buf_addr[MAX_CAP_BUF][CAP_PLANES];
 	int cap_buf_flag[MAX_CAP_BUF];
 	int cap_ion_fd;
 	int cap_ion_size;
@@ -126,14 +125,12 @@ struct instance {
 	int fps_n, fps_d;
 	int depth;
 	int interlaced;
-	int save_frames;
 	int decode_order;
 	int skip_frames;
 	int insert_sc;
 	int need_header;
 	int secure;
 	int continue_data_transfer;
-	char *save_path;
 	char *url;
 
 	/* video decoder related parameters */

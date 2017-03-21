@@ -305,49 +305,6 @@ cleanup(struct instance *i)
 		video_close(i);
 }
 
-static int
-save_frame(struct instance *i, const void *buf, unsigned int size)
-{
-	mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
-	char filename[64];
-	int fd;
-	int ret;
-	static unsigned int frame_num = 0;
-
-	if (!i->save_frames)
-		return 0;
-
-	if (!i->save_path)
-		ret = sprintf(filename, "/mnt/frame%04d.nv12", frame_num);
-	else
-		ret = sprintf(filename, "%s/frame%04d.nv12", i->save_path,
-			      frame_num);
-	if (ret < 0) {
-		err("sprintf fail (%s)", strerror(errno));
-		return -1;
-	}
-
-	dbg("create file %s", filename);
-
-	fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC | O_SYNC, mode);
-	if (fd < 0) {
-		err("cannot open file (%s)", strerror(errno));
-		return -1;
-	}
-
-	ret = write(fd, buf, size);
-	if (ret < 0) {
-		err("cannot write to file (%s)", strerror(errno));
-		return -1;
-	}
-
-	close(fd);
-
-	frame_num++;
-
-	return 0;
-}
-
 struct ts_entry {
 	uint64_t pts;
 	uint64_t dts;
@@ -820,9 +777,6 @@ handle_video_capture(struct instance *i)
 		int pending = 0;
 
 		vid->total_captured++;
-
-		save_frame(i, (void *)vid->cap_buf_addr[n][0],
-			   bytesused);
 
 		pthread_mutex_lock(&i->lock);
 

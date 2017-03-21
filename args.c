@@ -35,7 +35,6 @@ void print_usage(char *name)
 	fprintf(stderr, "usage: %s [OPTS] <URL>\n", name);
 	fprintf(stderr, "Where OPTS is a combination of:\n"
 	        "  -m <device>     video device (default /dev/video32)\n"
-	        "  -f <directory>  save frames to directory\n"
 	        "  -c              set \"continue data transfer\" flag\n"
 	        "  -d              output frames in decode order\n"
 	        "  -i              skip frames\n"
@@ -63,10 +62,6 @@ int parse_args(struct instance *i, int argc, char **argv)
 			break;
 		case 'm':
 			i->video.name = optarg;
-			break;
-		case 'o':
-			i->save_frames = 1;
-			i->save_path = optarg;
 			break;
 		case 'd':
 			i->decode_order = 1;
