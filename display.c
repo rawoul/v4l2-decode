@@ -525,9 +525,9 @@ format_is_supported(struct display *display, uint32_t format)
 }
 
 struct fb *
-window_create_buffer(struct window *window, int group,
-		     int index, int fd, int offset,
-		     uint32_t format, int width, int height, int stride)
+window_create_buffer(struct window *window, int group, int index, int fd,
+		     uint32_t format, int width, int height, int n_planes,
+		     const int *plane_offsets, const int *plane_strides)
 {
 	struct zwp_linux_buffer_params_v1 *params;
 	struct fb *fb;
@@ -539,22 +539,34 @@ window_create_buffer(struct window *window, int group,
 	}
 #endif
 
+	if (n_planes <= 0 || n_planes > FB_MAX_PLANES) {
+		err("invalid number of planes");
+		return NULL;
+	}
+
 	fb = calloc(1, sizeof *fb);
 	fb->group = group;
 	fb->index = index;
 	fb->fd = fd;
-	fb->offset = offset;
 	fb->format = format;
 	fb->width = width;
 	fb->height = height;
-	fb->stride = stride;
 	fb->window = window;
 	fb->ar_x = 1;
 	fb->ar_y = 1;
 
+	fb->n_planes = n_planes;
+	memcpy(fb->offsets, plane_offsets, n_planes * sizeof (int));
+	memcpy(fb->strides, plane_strides, n_planes * sizeof (int));
+
 	params = zwp_linux_dmabuf_v1_create_params(window->display->dmabuf);
-	zwp_linux_buffer_params_v1_add(params, fb->fd, 0, fb->offset,
-				       fb->stride, 0, 0);
+
+	for (int i = 0; i < fb->n_planes; i++) {
+		zwp_linux_buffer_params_v1_add(params, fb->fd, i,
+					       fb->offsets[i],
+					       fb->strides[i], 0, 0);
+	}
+
 	zwp_linux_buffer_params_v1_add_listener(params, &params_listener, fb);
 	zwp_linux_buffer_params_v1_create(params, fb->width, fb->height,
 					  fb->format, 0);

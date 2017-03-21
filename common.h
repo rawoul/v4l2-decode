@@ -92,10 +92,12 @@ struct video {
 	int cap_h;
 	int cap_buf_cnt;
 	uint32_t cap_buf_format;
-	int cap_buf_size[CAP_PLANES];
-	int cap_buf_stride[CAP_PLANES];
-	int cap_buf_off[MAX_CAP_BUF][CAP_PLANES];
+	int cap_planes_count;
+	int cap_plane_off[CAP_PLANES];
+	int cap_plane_stride[CAP_PLANES];
+	int cap_buf_off[MAX_CAP_BUF];
 	int cap_buf_flag[MAX_CAP_BUF];
+	int cap_buf_size;
 	int cap_ion_fd;
 	int cap_ion_size;
 	void *cap_ion_addr;

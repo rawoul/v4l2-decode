@@ -119,13 +119,21 @@ restart_capture(struct instance *i)
 
 	if (i->window) {
 		for (n = 0; n < vid->cap_buf_cnt; n++) {
+			int plane_offsets[CAP_PLANES];
+
+			for (int i = 0; i < vid->cap_planes_count; i++) {
+				plane_offsets[i] = vid->cap_buf_off[n] +
+					vid->cap_plane_off[i];
+			}
+
 			i->disp_buffers[n] =
 				window_create_buffer(i->window, i->group, n,
 						     vid->cap_ion_fd,
-						     vid->cap_buf_off[n][0],
 						     vid->cap_buf_format,
 						     vid->cap_w, vid->cap_h,
-						     vid->cap_buf_stride[0]);
+						     vid->cap_planes_count,
+						     plane_offsets,
+						     vid->cap_plane_stride);
 			if (!i->disp_buffers[n])
 				return -1;
 		}

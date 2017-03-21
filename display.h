@@ -13,15 +13,18 @@ typedef void (*fb_release_cb_t)(struct fb *fb, void *data);
 typedef void (*window_key_cb_t)(struct window *w, uint32_t time, uint32_t key,
 				enum wl_keyboard_key_state state);
 
+#define FB_MAX_PLANES 3
+
 struct fb {
 	struct window *window;
 	int group;
 	int index;
 	int fd;
-	int offset;
+	int offsets[FB_MAX_PLANES];
+	int strides[FB_MAX_PLANES];
+	int n_planes;
 	int width;
 	int height;
-	int stride;
 	int busy;
 	int ar_x, ar_y;
 	int crop_x, crop_y, crop_w, crop_h;
@@ -47,10 +50,10 @@ void window_toggle_fullscreen(struct window *w);
 
 void window_show_buffer(struct window *window, struct fb *fb,
 			fb_release_cb_t release_cb, void *cb_data);
-struct fb *window_create_buffer(struct window *window, int group,
-				int index, int fd,
-				int offset, uint32_t format,
-				int width, int height, int stride);
+struct fb *window_create_buffer(struct window *window, int group, int index,
+				int fd, uint32_t format, int width, int height,
+				int n_planes, const int *plane_offsets,
+				const int *plane_strides);
 void window_destroy(struct window *window);
 
 void fb_destroy(struct fb *fb);

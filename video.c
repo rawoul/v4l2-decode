@@ -747,9 +747,9 @@ int video_queue_buf_cap(struct instance *i, int n)
 		(unsigned long)vid->cap_ion_fd :
 		(unsigned long)vid->cap_ion_addr;
 	buf.m.planes[0].reserved[0] = vid->cap_ion_fd;
-	buf.m.planes[0].reserved[1] = vid->cap_buf_off[n][0];
-	buf.m.planes[0].length = vid->cap_buf_size[0];
-	buf.m.planes[0].bytesused = vid->cap_buf_size[0];
+	buf.m.planes[0].reserved[1] = vid->cap_buf_off[n];
+	buf.m.planes[0].length = vid->cap_buf_size;
+	buf.m.planes[0].bytesused = vid->cap_buf_size;
 	buf.m.planes[0].data_offset = 0;
 
 	if (vid->extradata_index) { // Should be 1
@@ -994,12 +994,11 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 	struct v4l2_format fmt;
 	struct v4l2_pix_format_mplane *pix;
 	struct v4l2_requestbuffers reqbuf;
-	int buffer_size;
 	int ion_fd;
 	int ion_size;
 	uint32_t ion_flags;
 	void *buf_addr;
-	int idx, n, extra_idx;
+	int n, extra_idx;
 
 	type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 
@@ -1062,19 +1061,40 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 	vid->cap_w = pix->width;
 	vid->cap_h = pix->height;
 
-	buffer_size = 0;
-	for (n = 0; n < pix->num_planes; n++) {
-		vid->cap_buf_stride[n] = pix->plane_fmt[n].bytesperline;
-		vid->cap_buf_size[n] = pix->plane_fmt[n].sizeimage;
-		buffer_size += pix->plane_fmt[n].sizeimage;
+	/* MSM V4L2 driver stores video data in the first plane and extra
+	 * metadata in the second plane. */
+	vid->cap_buf_size = pix->plane_fmt[0].sizeimage;
+
+	switch (vid->cap_buf_format) {
+	case V4L2_PIX_FMT_NV12:
+		vid->cap_planes_count = 2;
+		/* Y plane */
+		vid->cap_plane_off[0] = 0;
+		vid->cap_plane_stride[0] = pix->plane_fmt[0].bytesperline;
+		/* UV plane */
+		vid->cap_plane_off[1] = pix->plane_fmt[0].reserved[0] *
+			pix->plane_fmt[0].bytesperline;
+		vid->cap_plane_stride[1] = pix->plane_fmt[0].bytesperline;
+		break;
+	default:
+		/* the driver does not provide enough information to compute
+		 * the plane offsets for some formats like UBWC, so just use
+		 * a single plane. */
+		vid->cap_planes_count = 1;
+		vid->cap_plane_off[0] = 0;
+		vid->cap_plane_stride[0] = pix->plane_fmt[0].bytesperline;
+		break;
 	}
+
+	for (n = 0; n < vid->cap_buf_cnt; n++)
+		vid->cap_buf_off[n] = n * vid->cap_buf_size;
 
 	if (i->secure)
 		ion_flags = ION_FLAG_SECURE | ION_FLAG_CP_PIXEL;
 	else
 		ion_flags = 0;
 
-	ion_size = vid->cap_buf_cnt * buffer_size;
+	ion_size = vid->cap_buf_cnt * vid->cap_buf_size;
 	ion_fd = alloc_ion_buffer(i, ion_size, ion_flags);
 	if (ion_fd < 0)
 		return -1;
@@ -1095,14 +1115,6 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 	vid->cap_ion_fd = ion_fd;
 	vid->cap_ion_size = ion_size;
 	vid->cap_ion_addr = buf_addr;
-
-	for (idx = 0; idx < vid->cap_buf_cnt; idx++) {
-		int offset = idx * buffer_size;
-		for (n = 0; n < pix->num_planes; n++) {
-			vid->cap_buf_off[idx][n] = offset;
-			offset += vid->cap_buf_size[n];
-		}
-	}
 
 	dbg("%s: succesfully mmapped %d buffers", buf_type_to_string(type),
 	    vid->cap_buf_cnt);
