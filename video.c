@@ -34,7 +34,6 @@
 #include <linux/videodev2.h>
 #include <linux/ion.h>
 #include <linux/msm_ion.h>
-#include <media/msm_media_info.h>
 #include <media/msm_vidc.h>
 
 #include "common.h"
@@ -961,24 +960,6 @@ alloc_ion_buffer(struct instance *i, size_t size, uint32_t flags)
 	return ret;
 }
 
-static int get_msm_color_format(uint32_t fourcc)
-{
-	switch (fourcc) {
-	case V4L2_PIX_FMT_NV12:
-		return COLOR_FMT_NV12;
-	case V4L2_PIX_FMT_NV21:
-		return COLOR_FMT_NV21;
-	case V4L2_PIX_FMT_NV12_UBWC:
-		return COLOR_FMT_NV12_UBWC;
-	case V4L2_PIX_FMT_NV12_TP10_UBWC:
-		return COLOR_FMT_NV12_BPP10_UBWC;
-	case V4L2_PIX_FMT_RGBA8888_UBWC:
-		return COLOR_FMT_RGBA8888_UBWC;
-	}
-
-	return -1;
-}
-
 static int setup_extradata(struct instance *i, int index, int size)
 {
 	struct video *vid = &i->video;
@@ -1014,7 +995,6 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 	struct v4l2_pix_format_mplane *pix;
 	struct v4l2_requestbuffers reqbuf;
 	int buffer_size;
-	int color_fmt;
 	int ion_fd;
 	int ion_size;
 	uint32_t ion_flags;
@@ -1078,12 +1058,6 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 		    pix->plane_fmt[n].bytesperline,
 		    pix->plane_fmt[n].reserved[0]);
 
-	color_fmt = get_msm_color_format(pix->pixelformat);
-	if (color_fmt < 0) {
-		err("unhandled %s pixel format", buf_type_to_string(type));
-		return -1;
-	}
-
 	vid->cap_buf_format = pix->pixelformat;
 	vid->cap_w = pix->width;
 	vid->cap_h = pix->height;
@@ -1094,15 +1068,6 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 		vid->cap_buf_size[n] = pix->plane_fmt[n].sizeimage;
 		buffer_size += pix->plane_fmt[n].sizeimage;
 	}
-
-#if 0
-	vid->cap_h = VENUS_Y_SCANLINES(color_fmt, pix->height);
-	vid->cap_buf_stride[0] = VENUS_Y_STRIDE(color_fmt, pix->width);
-
-	buffer_size = VENUS_BUFFER_SIZE(color_fmt,
-					pix->width,
-					pix->height);
-#endif
 
 	if (i->secure)
 		ion_flags = ION_FLAG_SECURE | ION_FLAG_CP_PIXEL;
