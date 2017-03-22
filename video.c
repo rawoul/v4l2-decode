@@ -744,10 +744,10 @@ int video_queue_buf_cap(struct instance *i, int n)
 	buf.m.planes = planes;
 
 	buf.m.planes[0].m.userptr = i->secure ?
-		(unsigned long)vid->cap_ion_fd :
-		(unsigned long)vid->cap_ion_addr;
-	buf.m.planes[0].reserved[0] = vid->cap_ion_fd;
-	buf.m.planes[0].reserved[1] = vid->cap_buf_off[n];
+		(unsigned long)vid->cap_buf_fd[n] :
+		(unsigned long)vid->cap_buf_addr[n];
+	buf.m.planes[0].reserved[0] = vid->cap_buf_fd[n];
+	buf.m.planes[0].reserved[1] = 0;
 	buf.m.planes[0].length = vid->cap_buf_size;
 	buf.m.planes[0].bytesused = vid->cap_buf_size;
 	buf.m.planes[0].data_offset = 0;
@@ -995,7 +995,6 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 	struct v4l2_pix_format_mplane *pix;
 	struct v4l2_requestbuffers reqbuf;
 	int ion_fd;
-	int ion_size;
 	uint32_t ion_flags;
 	void *buf_addr;
 	int n, extra_idx;
@@ -1086,35 +1085,32 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 		break;
 	}
 
-	for (n = 0; n < vid->cap_buf_cnt; n++)
-		vid->cap_buf_off[n] = n * vid->cap_buf_size;
-
 	if (i->secure)
 		ion_flags = ION_FLAG_SECURE | ION_FLAG_CP_PIXEL;
 	else
 		ion_flags = 0;
 
-	ion_size = vid->cap_buf_cnt * vid->cap_buf_size;
-	ion_fd = alloc_ion_buffer(i, ion_size, ion_flags);
-	if (ion_fd < 0)
-		return -1;
-
-	if (!i->secure) {
-		buf_addr = mmap(NULL, ion_size, PROT_READ, MAP_SHARED,
-				ion_fd, 0);
-		if (buf_addr == MAP_FAILED) {
-			err("failed to map %s buffer: %m",
-			    buf_type_to_string(type));
-			close(ion_fd);
+	for (n = 0; n < vid->cap_buf_cnt; n++) {
+		ion_fd = alloc_ion_buffer(i, vid->cap_buf_size, ion_flags);
+		if (ion_fd < 0)
 			return -1;
-		}
-	} else {
-		buf_addr = NULL;
-	}
 
-	vid->cap_ion_fd = ion_fd;
-	vid->cap_ion_size = ion_size;
-	vid->cap_ion_addr = buf_addr;
+		if (!i->secure) {
+			buf_addr = mmap(NULL, vid->cap_buf_size, PROT_READ,
+					MAP_SHARED, ion_fd, 0);
+			if (buf_addr == MAP_FAILED) {
+				err("failed to map %s buffer: %m",
+				    buf_type_to_string(type));
+				close(ion_fd);
+				return -1;
+			}
+		} else {
+			buf_addr = NULL;
+		}
+
+		vid->cap_buf_fd[n] = ion_fd;
+		vid->cap_buf_addr[n] = buf_addr;
+	}
 
 	dbg("%s: succesfully mmapped %d buffers", buf_type_to_string(type),
 	    vid->cap_buf_cnt);
@@ -1152,21 +1148,22 @@ int video_stop_capture(struct instance *i)
 		return -1;
 	}
 
-	if (vid->cap_ion_addr) {
-		if (munmap(vid->cap_ion_addr, vid->cap_ion_size))
+	for (int n = 0; n < vid->cap_buf_cnt; n++) {
+		if (munmap(vid->cap_buf_addr[n], vid->cap_buf_size))
 			err("failed to unmap %s buffer: %m",
 			    buf_type_to_string(type));
-	}
 
-	if (vid->cap_ion_fd >= 0) {
-		if (close(vid->cap_ion_fd) < 0)
+		if (close(vid->cap_buf_fd[n]) < 0)
 			err("failed to close %s ion buffer: %m",
 			    buf_type_to_string(type));
+
+		vid->cap_buf_fd[n] = -1;
+		vid->cap_buf_addr[n] = NULL;
+		vid->cap_buf_flag[n] = 0;
 	}
 
-	vid->cap_ion_fd = -1;
-	vid->cap_ion_size = 0;
-	vid->cap_ion_addr = NULL;
+	vid->cap_planes_count = 0;
+	vid->cap_buf_size = 0;
 	vid->cap_buf_cnt = 0;
 
 	return 0;
@@ -1281,6 +1278,12 @@ int video_stop_output(struct instance *i)
 		if (close(vid->out_ion_fd) < 0)
 			err("failed to close %s ion buffer: %m",
 			    buf_type_to_string(type));
+	}
+
+	for (int n = 0; n < vid->out_buf_cnt; n++) {
+		vid->out_buf_flag[n] = 0;
+		vid->out_buf_off[n] = 0;
+		vid->out_buf_addr[n] = NULL;
 	}
 
 	vid->out_ion_fd = -1;

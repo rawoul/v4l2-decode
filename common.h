@@ -95,12 +95,10 @@ struct video {
 	int cap_planes_count;
 	int cap_plane_off[CAP_PLANES];
 	int cap_plane_stride[CAP_PLANES];
-	int cap_buf_off[MAX_CAP_BUF];
 	int cap_buf_flag[MAX_CAP_BUF];
 	int cap_buf_size;
-	int cap_ion_fd;
-	int cap_ion_size;
-	void *cap_ion_addr;
+	int cap_buf_fd[MAX_CAP_BUF];
+	void *cap_buf_addr[MAX_CAP_BUF];
 
 	/* timestamp list for all pending frames */
 	struct list_head pending_ts_list;

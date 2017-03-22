@@ -737,20 +737,13 @@ get_fb(struct instance *i, int n)
 	struct video *vid = &i->video;
 
 	if (!i->disp_buffers[n]) {
-		int plane_offsets[CAP_PLANES];
-
-		for (int i = 0; i < vid->cap_planes_count; i++) {
-			plane_offsets[i] = vid->cap_buf_off[n] +
-				vid->cap_plane_off[i];
-		}
-
 		i->disp_buffers[n] =
 			window_create_buffer(i->window, i->group, n,
-					     vid->cap_ion_fd,
+					     vid->cap_buf_fd[n],
 					     vid->cap_buf_format,
 					     vid->cap_w, vid->cap_h,
 					     vid->cap_planes_count,
-					     plane_offsets,
+					     vid->cap_plane_off,
 					     vid->cap_plane_stride);
 	}
 
