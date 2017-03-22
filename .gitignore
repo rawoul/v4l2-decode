@@ -3,3 +3,6 @@
 /compile_commands.json
 /v4l2_decode
 /protocol/*.[ch]
+/.git-commitdate
+/.git-version
+/version.h

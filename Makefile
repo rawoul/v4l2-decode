@@ -93,3 +93,20 @@ protocol/%-server-protocol.h : protocol/%.xml
 
 protocol/%-client-protocol.h : protocol/%.xml
 	mkdir -p $(@D) && $(WAYLAND_SCANNER) client-header < $< > $@
+
+GIT_VERSION = $(shell git describe --dirty --tags --always)
+GIT_COMMIT_DATE = $(shell git log -1 --format=%cd)
+
+.PHONY: .git-version
+.git-version:
+	v='$(GIT_VERSION)'; echo "$$v" | cmp -s - $@ || echo "$$v" > $@
+
+.PHONY: .git-commitdate
+.git-commitdate:
+	v='$(GIT_COMMIT_DATE)'; echo "$$v" | cmp -s - $@ || echo "$$v" > $@
+
+version.h: .git-version .git-commitdate
+	v=`cat .git-version`; echo "#define VERSION \"$$v\"" > $@
+	v=`cat .git-commitdate`; echo "#define DATE \"$$v\"" >> $@
+
+args.o: version.h

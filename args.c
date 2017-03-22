@@ -27,11 +27,13 @@
 #include <stdlib.h>
 
 #include "common.h"
+#include "version.h"
 
 int debug_level;
 
 void print_usage(char *name)
 {
+	fprintf(stderr, "v4l2_decode version " VERSION " date " DATE "\n\n");
 	fprintf(stderr, "usage: %s [OPTS] <URL>\n", name);
 	fprintf(stderr, "Where OPTS is a combination of:\n"
 	        "  -m <device>     video device (default /dev/video32)\n"
