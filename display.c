@@ -147,8 +147,7 @@ window_commit(struct window *w)
 	else
 		wl_surface_damage(w->surface, 0, 0, w->width, w->height);
 
-
-	if (fb) {
+	if (fb && display->presentation) {
 		if (fb->presentation_feedback)
 			wp_presentation_feedback_destroy(fb->presentation_feedback);
 
