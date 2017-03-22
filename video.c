@@ -1011,6 +1011,7 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 	struct video *vid = &i->video;
 	enum v4l2_buf_type type;
 	struct v4l2_format fmt;
+	struct v4l2_pix_format_mplane *pix;
 	struct v4l2_requestbuffers reqbuf;
 	int buffer_size;
 	int color_fmt;
@@ -1028,15 +1029,16 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 
 	memzero(fmt);
 	fmt.type = type;
-	fmt.fmt.pix_mp.height = h;
-	fmt.fmt.pix_mp.width = w;
+	pix = &fmt.fmt.pix_mp;
+	pix->height = h;
+	pix->width = w;
 
 	if (i->depth == 10)
-		fmt.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_NV12_TP10_UBWC;
+		pix->pixelformat = V4L2_PIX_FMT_NV12_TP10_UBWC;
 	else if (!i->interlaced)
-		fmt.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_NV12_UBWC;
+		pix->pixelformat = V4L2_PIX_FMT_NV12_UBWC;
 	else
-		fmt.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_NV12;
+		pix->pixelformat = V4L2_PIX_FMT_NV12;
 
 	if (ioctl(vid->fd, VIDIOC_S_FMT, &fmt) < 0) {
 		err("failed to set %s format (%dx%d)",
@@ -1066,43 +1068,40 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 	}
 
 	dbg("  %dx%d fmt=%s (%d planes) field=%s cspace=%s flags=%08x",
-	    fmt.fmt.pix_mp.width, fmt.fmt.pix_mp.height,
-	    fourcc_to_string(fmt.fmt.pix_mp.pixelformat),
-	    fmt.fmt.pix_mp.num_planes,
-	    v4l2_field_to_string(fmt.fmt.pix_mp.field),
-	    v4l2_colorspace_to_string(fmt.fmt.pix_mp.colorspace),
-	    fmt.fmt.pix_mp.flags);
+	    pix->width, pix->height, fourcc_to_string(pix->pixelformat),
+	    pix->num_planes, v4l2_field_to_string(pix->field),
+	    v4l2_colorspace_to_string(pix->colorspace), pix->flags);
 
-	for (n = 0; n < fmt.fmt.pix_mp.num_planes; n++)
+	for (n = 0; n < pix->num_planes; n++)
 		dbg("    plane %d: size=%d stride=%d scanlines=%d", n,
-		    fmt.fmt.pix_mp.plane_fmt[n].sizeimage,
-		    fmt.fmt.pix_mp.plane_fmt[n].bytesperline,
-		    fmt.fmt.pix_mp.plane_fmt[n].reserved[0]);
+		    pix->plane_fmt[n].sizeimage,
+		    pix->plane_fmt[n].bytesperline,
+		    pix->plane_fmt[n].reserved[0]);
 
-	color_fmt = get_msm_color_format(fmt.fmt.pix_mp.pixelformat);
+	color_fmt = get_msm_color_format(pix->pixelformat);
 	if (color_fmt < 0) {
 		err("unhandled %s pixel format", buf_type_to_string(type));
 		return -1;
 	}
 
-	vid->cap_buf_format = fmt.fmt.pix_mp.pixelformat;
-	vid->cap_w = fmt.fmt.pix_mp.width;
-	vid->cap_h = fmt.fmt.pix_mp.height;
+	vid->cap_buf_format = pix->pixelformat;
+	vid->cap_w = pix->width;
+	vid->cap_h = pix->height;
 
 	buffer_size = 0;
-	for (n = 0; n < fmt.fmt.pix_mp.num_planes; n++) {
-		vid->cap_buf_stride[n] = fmt.fmt.pix_mp.plane_fmt[n].bytesperline;
-		vid->cap_buf_size[n] = fmt.fmt.pix_mp.plane_fmt[n].sizeimage;
-		buffer_size += fmt.fmt.pix_mp.plane_fmt[n].sizeimage;
+	for (n = 0; n < pix->num_planes; n++) {
+		vid->cap_buf_stride[n] = pix->plane_fmt[n].bytesperline;
+		vid->cap_buf_size[n] = pix->plane_fmt[n].sizeimage;
+		buffer_size += pix->plane_fmt[n].sizeimage;
 	}
 
 #if 0
-	vid->cap_h = VENUS_Y_SCANLINES(color_fmt, fmt.fmt.pix_mp.height);
-	vid->cap_buf_stride[0] = VENUS_Y_STRIDE(color_fmt, fmt.fmt.pix_mp.width);
+	vid->cap_h = VENUS_Y_SCANLINES(color_fmt, pix->height);
+	vid->cap_buf_stride[0] = VENUS_Y_STRIDE(color_fmt, pix->width);
 
 	buffer_size = VENUS_BUFFER_SIZE(color_fmt,
-					fmt.fmt.pix_mp.width,
-					fmt.fmt.pix_mp.height);
+					pix->width,
+					pix->height);
 #endif
 
 	if (i->secure)
@@ -1134,7 +1133,7 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 
 	for (idx = 0; idx < vid->cap_buf_cnt; idx++) {
 		int offset = idx * buffer_size;
-		for (n = 0; n < fmt.fmt.pix_mp.num_planes; n++) {
+		for (n = 0; n < pix->num_planes; n++) {
 			vid->cap_buf_off[idx][n] = offset;
 			vid->cap_buf_addr[idx][n] = vid->cap_ion_addr + offset;
 			offset += vid->cap_buf_size[n];
@@ -1144,13 +1143,13 @@ int video_setup_capture(struct instance *i, int num_buffers, int w, int h)
 	dbg("%s: succesfully mmapped %d buffers", buf_type_to_string(type),
 	    vid->cap_buf_cnt);
 
-	extra_idx = EXTRADATA_IDX(fmt.fmt.pix_mp.num_planes);
+	extra_idx = EXTRADATA_IDX(pix->num_planes);
 	if (extra_idx && (extra_idx < VIDEO_MAX_PLANES)) {
 		dbg("%s: extradata plane is %d (size=%d)",
 		    buf_type_to_string(type), extra_idx,
-		    fmt.fmt.pix_mp.plane_fmt[extra_idx].sizeimage);
+		    pix->plane_fmt[extra_idx].sizeimage);
 		setup_extradata(i, extra_idx,
-				fmt.fmt.pix_mp.plane_fmt[extra_idx].sizeimage);
+				pix->plane_fmt[extra_idx].sizeimage);
 	}
 
 	return 0;
@@ -1203,6 +1202,7 @@ int video_setup_output(struct instance *i, unsigned long codec,
 	struct video *vid = &i->video;
 	enum v4l2_buf_type type;
 	struct v4l2_format fmt;
+	struct v4l2_pix_format_mplane *pix;
 	struct v4l2_requestbuffers reqbuf;
 	int ion_fd;
 	int ion_size;
@@ -1213,9 +1213,10 @@ int video_setup_output(struct instance *i, unsigned long codec,
 
 	memzero(fmt);
 	fmt.type = type;
-	fmt.fmt.pix_mp.width = i->width;
-	fmt.fmt.pix_mp.height = i->height;
-	fmt.fmt.pix_mp.pixelformat = codec;
+	pix = &fmt.fmt.pix_mp;
+	pix->width = i->width;
+	pix->height = i->height;
+	pix->pixelformat = codec;
 
 	video_set_framerate(i, i->fps_n, i->fps_d);
 
@@ -1225,9 +1226,9 @@ int video_setup_output(struct instance *i, unsigned long codec,
 	}
 
 	dbg("%s: setup buffer size=%u (requested=%u)", buf_type_to_string(type),
-	    fmt.fmt.pix_mp.plane_fmt[0].sizeimage, size);
+	    pix->plane_fmt[0].sizeimage, size);
 
-	vid->out_buf_size = fmt.fmt.pix_mp.plane_fmt[0].sizeimage;
+	vid->out_buf_size = pix->plane_fmt[0].sizeimage;
 
 	memzero(reqbuf);
 	reqbuf.count = count;
