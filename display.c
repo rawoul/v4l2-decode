@@ -65,6 +65,8 @@ struct window {
 void
 fb_destroy(struct fb *fb)
 {
+	if (fb->sync_callback)
+		wl_callback_destroy(fb->sync_callback);
 	if (fb->presentation_feedback)
 		wp_presentation_feedback_destroy(fb->presentation_feedback);
 	if (fb->buffer)
@@ -131,6 +133,20 @@ static const struct wp_presentation_feedback_listener presentation_feedback_list
 };
 
 static void
+sync_callback(void * data, struct wl_callback * callback, uint32_t time)
+{
+	struct fb *fb = data;
+
+	wl_callback_destroy(callback);
+	if (fb)
+		fb->sync_callback = NULL;
+}
+
+static const struct wl_callback_listener sync_listener = {
+	sync_callback
+};
+
+static void
 window_commit(struct window *w)
 {
 	struct display *display = w->display;
@@ -160,6 +176,11 @@ window_commit(struct window *w)
 		wp_presentation_feedback_add_listener(
 			fb->presentation_feedback,
 			&presentation_feedback_listener, fb);
+	} else if (fb) {
+		if (fb->sync_callback)
+			wl_callback_destroy(fb->sync_callback);
+		fb->sync_callback = wl_display_sync(display->display);
+		wl_callback_add_listener(fb->sync_callback, &sync_listener, fb);
 	}
 
 	if (fb)
