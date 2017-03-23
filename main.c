@@ -117,28 +117,6 @@ restart_capture(struct instance *i)
 	 */
 	i->group++;
 
-	if (i->window) {
-		for (n = 0; n < vid->cap_buf_cnt; n++) {
-			int plane_offsets[CAP_PLANES];
-
-			for (int i = 0; i < vid->cap_planes_count; i++) {
-				plane_offsets[i] = vid->cap_buf_off[n] +
-					vid->cap_plane_off[i];
-			}
-
-			i->disp_buffers[n] =
-				window_create_buffer(i->window, i->group, n,
-						     vid->cap_ion_fd,
-						     vid->cap_buf_format,
-						     vid->cap_w, vid->cap_h,
-						     vid->cap_planes_count,
-						     plane_offsets,
-						     vid->cap_plane_stride);
-			if (!i->disp_buffers[n])
-				return -1;
-		}
-	}
-
 	return 0;
 }
 
@@ -753,6 +731,32 @@ buffer_released(struct fb *fb, void *data)
 		video_queue_buf_cap(i, n);
 }
 
+static struct fb *
+get_fb(struct instance *i, int n)
+{
+	struct video *vid = &i->video;
+
+	if (!i->disp_buffers[n]) {
+		int plane_offsets[CAP_PLANES];
+
+		for (int i = 0; i < vid->cap_planes_count; i++) {
+			plane_offsets[i] = vid->cap_buf_off[n] +
+				vid->cap_plane_off[i];
+		}
+
+		i->disp_buffers[n] =
+			window_create_buffer(i->window, i->group, n,
+					     vid->cap_ion_fd,
+					     vid->cap_buf_format,
+					     vid->cap_w, vid->cap_h,
+					     vid->cap_planes_count,
+					     plane_offsets,
+					     vid->cap_plane_stride);
+	}
+
+	return i->disp_buffers[n];
+}
+
 static int
 handle_video_capture(struct instance *i)
 {
@@ -834,7 +838,12 @@ handle_video_capture(struct instance *i)
 		pthread_mutex_unlock(&i->lock);
 
 		if (i->window) {
-			struct fb *fb = i->disp_buffers[n];
+			struct fb *fb = get_fb(i, n);
+			if (!fb) {
+				err("could not get framebuffer for "
+				    "video buffer %d", n);
+				return -1;
+			}
 
 			info("show buffer pts=%" PRIu64, pts);
 
