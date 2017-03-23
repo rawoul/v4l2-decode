@@ -39,6 +39,7 @@ void print_usage(char *name)
 	        "  -m <device>     video device (default /dev/video32)\n"
 	        "  -c              set \"continue data transfer\" flag\n"
 	        "  -d              output frames in decode order\n"
+	        "  -f              start fullscreen\n"
 	        "  -i              skip frames\n"
 	        "  -p              start paused\n"
 	        "  -s              secure mode\n"

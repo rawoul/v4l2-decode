@@ -268,13 +268,19 @@ window_set_aspect_ratio(struct window *w, int ar_x, int ar_y)
 void
 window_toggle_fullscreen(struct window *w)
 {
-	if (!w->xdg_toplevel)
-		return;
-
-	if (w->fullscreen)
-		zxdg_toplevel_v6_unset_fullscreen(w->xdg_toplevel);
-	else
-		zxdg_toplevel_v6_set_fullscreen(w->xdg_toplevel, NULL);
+	if (w->xdg_toplevel) {
+		if (w->fullscreen)
+			zxdg_toplevel_v6_unset_fullscreen(w->xdg_toplevel);
+		else
+			zxdg_toplevel_v6_set_fullscreen(w->xdg_toplevel, NULL);
+	} else if (w->shell_surface) {
+		if (w->fullscreen)
+			wl_shell_surface_set_toplevel(w->shell_surface);
+		else
+			wl_shell_surface_set_fullscreen(w->shell_surface,
+							WL_SHELL_SURFACE_FULLSCREEN_METHOD_SCALE,
+							0, NULL);
+	}
 }
 
 static void
