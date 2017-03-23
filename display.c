@@ -154,16 +154,12 @@ window_commit(struct window *w)
 	struct wl_region *region;
 
 	region = wl_compositor_create_region(display->compositor);
-	wl_region_add(region, 0, 0, w->width, w->height);
+	wl_region_add(region, 0, 0, INT_MAX, INT_MAX);
 	wl_surface_set_opaque_region(w->surface, region);
 	wl_region_destroy(region);
 
 	wl_surface_attach(w->surface, fb ? fb->buffer : NULL, 0, 0);
-	if (fb && display->compositor_version >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION)
-		wl_surface_damage_buffer(w->surface, 0, 0,
-					 fb->width, fb->height);
-	else
-		wl_surface_damage(w->surface, 0, 0, w->width, w->height);
+	wl_surface_damage(w->surface, 0, 0, INT_MAX, INT_MAX);
 
 	if (fb && display->presentation) {
 		if (fb->presentation_feedback)
@@ -784,7 +780,7 @@ seat_handle_capabilities(void *data, struct wl_seat *seat,
 		wl_keyboard_add_listener(d->keyboard, &keyboard_listener, d);
 
 	} else if (!(caps & WL_SEAT_CAPABILITY_KEYBOARD) && d->keyboard) {
-		if (d->seat_version >= WL_KEYBOARD_RELEASE_SINCE_VERSION)
+		if (d->seat_version >= 3)
 			wl_keyboard_release(d->keyboard);
 		else
 			wl_keyboard_destroy(d->keyboard);
