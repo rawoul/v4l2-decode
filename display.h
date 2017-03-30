@@ -4,6 +4,8 @@
 #include <wayland-client.h>
 #include <stdint.h>
 
+#include "list.h"
+
 struct display;
 struct window;
 struct fb;
@@ -29,6 +31,7 @@ struct fb {
 	int ar_x, ar_y;
 	int crop_x, crop_y, crop_w, crop_h;
 	uint32_t format;
+	struct list_head link;
 	struct wl_buffer *buffer;
 	struct wl_callback *sync_callback;
 	struct wp_presentation_feedback *presentation_feedback;

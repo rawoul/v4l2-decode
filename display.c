@@ -65,6 +65,7 @@ struct window {
 void
 fb_destroy(struct fb *fb)
 {
+	list_del(&fb->link);
 	if (fb->sync_callback)
 		wl_callback_destroy(fb->sync_callback);
 	if (fb->presentation_feedback)
@@ -615,6 +616,8 @@ window_create_buffer(struct window *window, int group, int index, int fd,
 	fb->n_planes = n_planes;
 	memcpy(fb->offsets, plane_offsets, n_planes * sizeof (int));
 	memcpy(fb->strides, plane_strides, n_planes * sizeof (int));
+
+	INIT_LIST_HEAD(&fb->link);
 
 	if (display->dmabuf) {
 		struct zwp_linux_buffer_params_v1 *params =

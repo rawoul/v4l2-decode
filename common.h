@@ -151,7 +151,7 @@ struct instance {
 
 	struct display *display;
 	struct window *window;
-	struct fb *disp_buffers[MAX_CAP_BUF];
+	struct list_head fb_list;
 
 	AVFormatContext *avctx;
 	AVStream *stream;

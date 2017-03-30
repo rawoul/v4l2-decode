@@ -76,10 +76,24 @@ subscribe_events(struct instance *i)
 	return 0;
 }
 
+static struct fb *
+find_fb(struct instance *i, int group, int index)
+{
+	struct fb *fb;
+
+	list_for_each_entry(fb, &i->fb_list, link) {
+		if (fb->group == group && fb->index == index && fb->buffer)
+			return fb;
+	}
+
+	return NULL;
+}
+
 static int
 restart_capture(struct instance *i)
 {
 	struct video *vid = &i->video;
+	struct fb *fb, *next;
 	int n;
 
 	/*
@@ -87,9 +101,8 @@ restart_capture(struct instance *i)
 	 * wayland compositor; buffers in use will be destroyed
 	 * when the release callback is called
 	 */
-	for (n = 0; n < vid->cap_buf_cnt; n++) {
-		struct fb *fb = i->disp_buffers[n];
-		if (fb && !fb->busy)
+	list_for_each_entry_safe(fb, next, &i->fb_list, link) {
+		if (!fb->busy)
 			fb_destroy(fb);
 	}
 
@@ -735,19 +748,22 @@ static struct fb *
 get_fb(struct instance *i, int n)
 {
 	struct video *vid = &i->video;
+	struct fb *fb;
 
-	if (!i->disp_buffers[n]) {
-		i->disp_buffers[n] =
-			window_create_buffer(i->window, i->group, n,
-					     vid->cap_buf_fd[n],
-					     vid->cap_buf_format,
-					     vid->cap_w, vid->cap_h,
-					     vid->cap_planes_count,
-					     vid->cap_plane_off,
-					     vid->cap_plane_stride);
+	fb = find_fb(i, i->group, n);
+	if (!fb) {
+		fb = window_create_buffer(i->window, i->group, n,
+					  vid->cap_buf_fd[n],
+					  vid->cap_buf_format,
+					  vid->cap_w, vid->cap_h,
+					  vid->cap_planes_count,
+					  vid->cap_plane_off,
+					  vid->cap_plane_stride);
+		if (fb)
+			list_add_tail(&fb->link, &i->fb_list);
 	}
 
-	return i->disp_buffers[n];
+	return fb;
 }
 
 static int
@@ -1255,6 +1271,7 @@ int main(int argc, char **argv)
 	pthread_cond_init(&inst.cond, 0);
 
 	INIT_LIST_HEAD(&inst.video.pending_ts_list);
+	INIT_LIST_HEAD(&inst.fb_list);
 	inst.video.pts_dts_delta = TIMESTAMP_NONE;
 	inst.video.cap_last_pts = TIMESTAMP_NONE;
 	inst.video.extradata_index = -1;
