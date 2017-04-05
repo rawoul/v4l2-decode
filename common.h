@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <pthread.h>
+#include <termios.h>
 
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
@@ -152,6 +153,9 @@ struct instance {
 	struct display *display;
 	struct window *window;
 	struct list_head fb_list;
+
+	int stdin_valid;
+	struct termios stdin_termios;
 
 	AVFormatContext *avctx;
 	AVStream *stream;

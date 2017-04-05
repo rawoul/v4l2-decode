@@ -942,9 +942,55 @@ setup_signal(struct instance *i)
 enum {
 	EV_VIDEO,
 	EV_DISPLAY,
+	EV_STDIN,
 	EV_SIGNAL,
 	EV_COUNT
 };
+
+static int
+kbd_init(struct instance *i)
+{
+	struct termios newt;
+
+	if (tcgetattr(STDIN_FILENO, &i->stdin_termios) < 0)
+		return -1;
+
+	newt = i->stdin_termios;
+	newt.c_lflag &= ~ICANON;
+	newt.c_lflag &= ~ECHO;
+
+	if (tcsetattr(STDIN_FILENO, TCSANOW, &newt) < 0)
+		return -1;
+
+	i->stdin_valid = 1;
+
+	return STDIN_FILENO;
+}
+
+static int
+kbd_handle_key(struct instance *i)
+{
+	uint8_t key[3];
+	int ret;
+
+	ret = read(STDIN_FILENO, key, 3);
+	if (ret < 0)
+		return -1;
+
+	if (key[0] == 's') {
+		info("Frame Step");
+		i->prerolled = 0;
+	}
+
+	return 0;
+}
+
+static void
+kbd_shutdown(struct instance *i)
+{
+	if (i->stdin_valid)
+		tcsetattr(STDIN_FILENO, TCSANOW, &i->stdin_termios);
+}
 
 void main_loop(struct instance *i)
 {
@@ -972,6 +1018,13 @@ void main_loop(struct instance *i)
 		pfd[nfds].fd = wl_display_get_fd(wl_display);
 		pfd[nfds].events = POLLIN;
 		ev[EV_DISPLAY] = nfds++;
+	}
+
+	ret = kbd_init(i);
+	if (ret >= 0) {
+		pfd[nfds].fd = ret;
+		pfd[nfds].events = POLLIN;
+		ev[EV_STDIN] = nfds++;
 	}
 
 	if (i->sigfd != -1) {
@@ -1042,6 +1095,10 @@ void main_loop(struct instance *i)
 				if (revents & POLLOUT)
 					pfd[ev[EV_DISPLAY]].events &= ~POLLOUT;
 
+			} else if (idx == ev[EV_STDIN]) {
+				kbd_handle_key(i);
+				break;
+
 			} else if (idx == ev[EV_SIGNAL]) {
 				handle_signal(i);
 				break;
@@ -1049,7 +1106,7 @@ void main_loop(struct instance *i)
 		}
 	}
 
-	finish(i);
+	kbd_shutdown(i);
 
 	dbg("main thread finished");
 }
