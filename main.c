@@ -114,16 +114,16 @@ restart_capture(struct instance *i)
 	if (video_setup_capture(i, 4, i->width, i->height))
 		return -1;
 
+	/* Start streaming */
+	if (video_stream(i, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE,
+			 VIDIOC_STREAMON))
+		return -1;
+
 	/* Queue all capture buffers */
 	for (n = 0; n < vid->cap_buf_cnt; n++) {
 		if (video_queue_buf_cap(i, n))
 			return -1;
 	}
-
-	/* Start streaming */
-	if (video_stream(i, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE,
-			 VIDIOC_STREAMON))
-		return -1;
 
 	/*
 	 * Recreate the window frame buffers
