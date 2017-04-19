@@ -261,6 +261,11 @@ window_recenter(struct window *w)
 		output_h = w->height;
 	}
 
+	dbg("fb %dx%d ar %d:%d src %dx%d%+d%+d dst %dx%d",
+	    fb->width, fb->height, ar_x, ar_y,
+	    (int)src_w, (int)src_h, (int)src_x, (int)src_y,
+	    output_w, output_h);
+
 	if (w->viewport) {
 		wp_viewport_set_destination(w->viewport, output_w, output_h);
 		wp_viewport_set_source(w->viewport,
