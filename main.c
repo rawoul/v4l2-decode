@@ -856,9 +856,7 @@ handle_video_capture(struct instance *i)
 
 			info("show buffer pts=%" PRIu64, pts);
 
-			if (extradata)
-				video_handle_extradata(i, extradata, fb);
-
+			fb_apply_extradata(fb, extradata);
 			window_show_buffer(i->window, fb,
 					   buffer_released, i);
 			busy = true;

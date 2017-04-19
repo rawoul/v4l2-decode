@@ -505,9 +505,8 @@ int video_set_framerate(struct instance *i, int num, int den)
 	return 0;
 }
 
-static void video_handle_extradata_payload(struct instance *i,
-					   enum msm_vidc_extradata_type type,
-					   void *data, int size, struct fb *fb)
+static int
+check_extradata_payload(enum msm_vidc_extradata_type type, void *data, int size)
 {
 	switch (type) {
 	case MSM_VIDC_EXTRADATA_OUTPUT_CROP: {
@@ -516,7 +515,7 @@ static void video_handle_extradata_payload(struct instance *i,
 		if (size != sizeof (*payload)) {
 			dbg("extradata: Invalid data size for %s",
 			    extradata_type_to_string(type));
-			return;
+			return -1;
 		}
 
 		dbg("extradata: %s top=%u left=%u "
@@ -525,11 +524,6 @@ static void video_handle_extradata_payload(struct instance *i,
 		    payload->top, payload->left,
 		    payload->display_width, payload->display_height,
 		    payload->width, payload->height);
-
-		fb->crop_x = payload->left;
-		fb->crop_y = payload->top;
-		fb->crop_w = payload->display_width;
-		fb->crop_h = payload->display_height;
 		break;
 	}
 
@@ -539,15 +533,12 @@ static void video_handle_extradata_payload(struct instance *i,
 		if (size != sizeof (*payload)) {
 			dbg("extradata: Invalid data size for %s",
 			    extradata_type_to_string(type));
-			return;
+			return -1;
 		}
 
 		dbg("extradata: %s aspect_width=%u aspect_height=%u",
 		    extradata_type_to_string(type),
 		    payload->aspect_width, payload->aspect_height);
-
-		fb->ar_x = payload->aspect_width;
-		fb->ar_y = payload->aspect_height;
 		break;
 	}
 
@@ -557,14 +548,13 @@ static void video_handle_extradata_payload(struct instance *i,
 		if (size != sizeof (*payload)) {
 			dbg("extradata: Invalid data size for %s",
 			    extradata_type_to_string(type));
-			return;
+			return -1;
 		}
 
 		dbg("extradata: %s format=%s color_format=%s",
 		    extradata_type_to_string(type),
 		    extradata_interlace_format_to_string(payload->format),
 		    extradata_interlace_color_format_to_string(payload->color_format));
-
 		break;
 	}
 
@@ -574,20 +564,24 @@ static void video_handle_extradata_payload(struct instance *i,
 		if (size != sizeof (*payload)) {
 			dbg("extradata: Invalid data size for %s",
 			    extradata_type_to_string(type));
-			return;
+			return -1;
 		}
 
 		dbg("extradata: %s nDisplayPrimariesX={%u, %u, %u} "
 		    "nDisplayPrimariesY={%u, %u, %u} nWhitePointX=%u "
-		    "nWhitePointY=%u nMaxDisplayMasteringLuminance=%u "
+		    "nWhitePointY=%u nMaxDisplayMasteringLuminance=%u"
 		    "nMinDisplayMasteringLuminance=%u",
-		    extradata_type_to_string(type), payload->nDisplayPrimariesX[0],
-		    payload->nDisplayPrimariesX[1], payload->nDisplayPrimariesX[2],
-		    payload->nDisplayPrimariesY[0], payload->nDisplayPrimariesY[1],
-		    payload->nDisplayPrimariesY[2], payload->nWhitePointX,
-		    payload->nWhitePointY, payload->nMaxDisplayMasteringLuminance,
+		    extradata_type_to_string(type),
+		    payload->nDisplayPrimariesX[0],
+		    payload->nDisplayPrimariesX[1],
+		    payload->nDisplayPrimariesX[2],
+		    payload->nDisplayPrimariesY[0],
+		    payload->nDisplayPrimariesY[1],
+		    payload->nDisplayPrimariesY[2],
+		    payload->nWhitePointX,
+		    payload->nWhitePointY,
+		    payload->nMaxDisplayMasteringLuminance,
 		    payload->nMinDisplayMasteringLuminance);
-
 		break;
 	}
 
@@ -597,7 +591,7 @@ static void video_handle_extradata_payload(struct instance *i,
 		if (size != sizeof (*payload)) {
 			dbg("extradata: Invalid data size for %s",
 			    extradata_type_to_string(type));
-			return;
+			return -1;
 		}
 
 		int framerate_num = payload->frame_rate;
@@ -606,44 +600,70 @@ static void video_handle_extradata_payload(struct instance *i,
 		dbg("extradata: %s frame_rate=%.3f",
 		    extradata_type_to_string(type),
 		    (float)framerate_num / (float)framerate_den);
-
 		break;
 	}
 
 	default:
-		dbg("extradata: unhandled extradata index %s (0x%02x)",
+		err("extradata: unhandled extradata header %s (%u)",
 		    extradata_type_to_string(type), type);
-		break;
+		return -1;
 	}
+
+	return 0;
 }
 
-void video_handle_extradata(struct instance *i,
-			    struct msm_vidc_extradata_header *hdr,
-			    struct fb *fb)
+bool
+extradata_header_is_valid(const struct msm_vidc_extradata_header *hdr, int size)
 {
-	uint32_t left = i->video.extradata_size;
+	unsigned int left;
+	int ret;
 
-	if (!hdr)
-		return;
+	if (!hdr || size < 0)
+		return false;
 
-	while (left >= sizeof (*hdr) && left >= hdr->size &&
+	left = size;
+
+	while (left > sizeof (*hdr) && left >= hdr->size &&
 	       hdr->type != MSM_VIDC_EXTRADATA_NONE) {
+		if (hdr->type == MSM_VIDC_EXTRADATA_INDEX) {
+			struct msm_vidc_extradata_index *payload = (void *)hdr->data;
+			ret = check_extradata_payload(payload->type,
+						      (void *)hdr->data + sizeof (hdr->type),
+						      hdr->data_size - sizeof (hdr->type));
+		} else {
+			ret = check_extradata_payload(hdr->type,
+						      (void *)hdr->data,
+						      hdr->data_size);
+		}
+
+		if (ret)
+			return false;
+
+		left -= hdr->size;
+		hdr = (void *)hdr + hdr->size;
+	}
+
+	return true;
+}
+
+void *
+extradata_header_find(const struct msm_vidc_extradata_header *hdr, int type)
+{
+	while (hdr && hdr->type != MSM_VIDC_EXTRADATA_NONE) {
+		if (hdr->type == (unsigned)type)
+			return (void *)hdr->data;
+
 		if (hdr->type == MSM_VIDC_EXTRADATA_INDEX) {
 			struct msm_vidc_extradata_index *payload =
 				(void *)hdr->data;
-
-			video_handle_extradata_payload(i, payload->type,
-						       ((uint8_t *)hdr->data) + sizeof (payload->type),
-						       hdr->data_size - sizeof (payload->type), fb);
-		} else {
-			video_handle_extradata_payload(i, hdr->type,
-						       hdr->data,
-						       hdr->data_size, fb);
+			if (type == (int)payload->type)
+				return (void *)hdr->data + sizeof (hdr->type);
 		}
 
-		left -= hdr->size;
-		hdr = (void *)((uint8_t*)hdr + hdr->size);
+		hdr = (void *)hdr + hdr->size;
 	}
+
+	return NULL;
 }
 
 static int video_count_capture_queued_bufs(struct video *vid)
@@ -836,6 +856,8 @@ int video_dequeue_capture(struct instance *i, int *n, unsigned int *bytesused,
 	struct video *vid = &i->video;
 	struct v4l2_buffer buf;
 	struct v4l2_plane planes[CAP_PLANES];
+	void *extradata_addr;
+	bool extradata_valid;
 
 	memzero(buf);
 	buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
@@ -854,12 +876,17 @@ int video_dequeue_capture(struct instance *i, int *n, unsigned int *bytesused,
 	if (ts)
 		*ts = buf.timestamp;
 
-	if (extradata) {
-		if (vid->extradata_index >= 0)
-			*extradata = vid->extradata_addr[buf.index];
-		else
-			*extradata = NULL;
-	}
+	extradata_addr = NULL;
+	if (vid->extradata_index >= 0)
+		extradata_addr = vid->extradata_addr[buf.index];
+
+	extradata_valid = false;
+	if (extradata_addr)
+		extradata_valid = extradata_header_is_valid(extradata_addr,
+							    vid->extradata_size);
+
+	if (extradata)
+		*extradata = extradata_valid ? extradata_addr : NULL;
 
 	return 0;
 }

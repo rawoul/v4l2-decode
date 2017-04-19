@@ -84,9 +84,10 @@ int video_set_dpb(struct instance *i,
 		  enum v4l2_mpeg_vidc_video_dpb_color_format format);
 
 /* extradata parsing */
-void video_handle_extradata(struct instance *i,
-			    struct msm_vidc_extradata_header *hdr,
-			    struct fb *fb);
+bool extradata_header_is_valid(const struct msm_vidc_extradata_header *hdr,
+			       int size);
+void *extradata_header_find(const struct msm_vidc_extradata_header *hdr,
+			    int type);
 
 #endif /* INCLUDE_VIDEO_H */
 

@@ -3,6 +3,7 @@
 
 #include <wayland-client.h>
 #include <stdint.h>
+#include <media/msm_vidc.h>
 
 #include "list.h"
 
@@ -60,6 +61,8 @@ struct fb *window_create_buffer(struct window *window, int group, int index,
 				const int *plane_strides);
 void window_destroy(struct window *window);
 
+void fb_apply_extradata(struct fb *fb,
+			const struct msm_vidc_extradata_header *hdr);
 void fb_destroy(struct fb *fb);
 
 #endif /* !DISPLAY_H_ */

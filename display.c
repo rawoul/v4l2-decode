@@ -14,6 +14,8 @@
 #include "linux-dmabuf-unstable-v1-client-protocol.h"
 #include "linux-dmabuf-client-protocol.h"
 
+#include "video.h"
+
 #define DBG_TAG "  disp"
 
 struct display {
@@ -73,6 +75,33 @@ fb_destroy(struct fb *fb)
 	if (fb->buffer)
 		wl_buffer_destroy(fb->buffer);
 	free(fb);
+}
+
+void
+fb_apply_extradata(struct fb *fb, const struct msm_vidc_extradata_header *hdr)
+{
+	struct msm_vidc_aspect_ratio_payload *ar;
+	struct msm_vidc_output_crop_payload *crop;
+
+	if ((ar = extradata_header_find(hdr, MSM_VIDC_EXTRADATA_ASPECT_RATIO))) {
+		fb->ar_x = ar->aspect_width;
+		fb->ar_y = ar->aspect_height;
+	} else {
+		fb->ar_x = 1;
+		fb->ar_y = 1;
+	}
+
+	if ((crop = extradata_header_find(hdr, MSM_VIDC_EXTRADATA_OUTPUT_CROP))) {
+		fb->crop_x = crop->left;
+		fb->crop_y = crop->top;
+		fb->crop_w = crop->display_width;
+		fb->crop_h = crop->display_height;
+	} else {
+		fb->crop_x = 0;
+		fb->crop_y = 0;
+		fb->crop_w = 0;
+		fb->crop_y = 0;
+	}
 }
 
 void
