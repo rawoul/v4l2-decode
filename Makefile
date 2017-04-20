@@ -58,7 +58,7 @@ $(EXEC): $(GENERATED_SOURCES) $(OBJECTS)
 	$(CC) $(ldflags) -o $(EXEC) $(OBJECTS) $(ldlibs)
 
 clean:
-	$(RM) *.o $(EXEC) $(GENERATED_SOURCES)
+	$(RM) *.o protocol/*.o $(EXEC) $(GENERATED_SOURCES)
 
 install:
 
